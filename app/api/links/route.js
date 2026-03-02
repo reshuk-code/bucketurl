@@ -2,6 +2,7 @@
 import { adminDb, adminAuth } from '@/lib/firebase-admin';
 import { NextResponse } from 'next/server';
 import { generateSlug } from '@/lib/utils';
+import { scrapeOgData } from '@/lib/scraper';
 
 async function getUidFromRequest(request) {
     const authHeader = request.headers.get('Authorization');
@@ -94,15 +95,21 @@ export async function POST(request) {
             } while (attempts < 10);
         }
 
+        // Scrape OG data if missing
+        let scrapedOg = {};
+        if (!ogTitle || !ogDescription || !ogImage) {
+            scrapedOg = (await scrapeOgData(originalUrl)) || {};
+        }
+
         const linkData = {
             shortCode,
             originalUrl,
             userId: uid,
             teamId: teamId || null,
-            title: title || new URL(originalUrl).hostname,
-            ogTitle: ogTitle || null,
-            ogDescription: ogDescription || null,
-            ogImage: ogImage || null,
+            title: title || scrapedOg.ogTitle || new URL(originalUrl).hostname,
+            ogTitle: ogTitle || scrapedOg.ogTitle || null,
+            ogDescription: ogDescription || scrapedOg.ogDescription || null,
+            ogImage: ogImage || scrapedOg.ogImage || null,
             password: password || null,
             expiresAt: expiresAt || null,
             utmSource: utmSource || null,
