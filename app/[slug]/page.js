@@ -1,6 +1,5 @@
 // app/[slug]/page.js - Short link redirect handler
 import { adminDb } from '@/lib/firebase-admin';
-import { redirect } from 'next/navigation';
 import { headers } from 'next/headers';
 
 export async function generateMetadata({ params }) {
@@ -104,7 +103,38 @@ export default async function SlugPage({ params, searchParams }) {
         // Don't fail redirect on click tracking error
     }
 
-    redirect(link.originalUrl);
+    // Return an HTML page that contains the OG tags and a meta refresh for redirection
+    // This ensures Facebook/Twitter/LinkedIn crawler bots see the metadata before redirecting
+    return (
+        <html lang="en">
+            <head>
+                <meta charSet="utf-8" />
+                <title>{link.ogTitle || link.title || 'BucketURL'}</title>
+                <meta name="description" content={link.ogDescription || 'Shared via BucketURL'} />
+
+                {/* OpenGraph */}
+                <meta property="og:title" content={link.ogTitle || link.title || 'BucketURL'} />
+                <meta property="og:description" content={link.ogDescription || 'Shared via BucketURL'} />
+                <meta property="og:type" content="website" />
+                {link.ogImage && <meta property="og:image" content={link.ogImage} />}
+
+                {/* Twitter */}
+                <meta name="twitter:card" content="summary_large_image" />
+                <meta name="twitter:title" content={link.ogTitle || link.title || 'BucketURL'} />
+                <meta name="twitter:description" content={link.ogDescription || 'Shared via BucketURL'} />
+                {link.ogImage && <meta name="twitter:image" content={link.ogImage} />}
+
+                {/* The Redirect */}
+                <meta httpEquiv="refresh" content={`0;url=${link.originalUrl}`} />
+                <link rel="canonical" href={link.originalUrl} />
+            </head>
+            <body style={{ backgroundColor: '#121212', color: '#fff', fontFamily: 'sans-serif', textAlign: 'center', padding: '2rem' }}>
+                <p>Redirecting to destination...</p>
+                <p style={{ fontSize: '0.8rem', color: '#a3a3a3' }}>If you are not redirected automatically, <a href={link.originalUrl} style={{ color: '#fff' }}>click here</a>.</p>
+                <script dangerouslySetInnerHTML={{ __html: `window.location.replace("${link.originalUrl}");` }} />
+            </body>
+        </html>
+    );
 }
 
 // Client component for password protection
