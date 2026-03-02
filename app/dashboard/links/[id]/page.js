@@ -5,14 +5,14 @@ import { useAuth } from '@/components/auth/AuthProvider';
 import { useParams, useRouter } from 'next/navigation';
 import {
     ArrowLeft, Link2, Copy, ExternalLink, BarChart3, Globe,
-    Monitor, Smartphone, Tablet, TrendingUp
+    Monitor, Smartphone, Tablet, TrendingUp, Zap
 } from 'lucide-react';
 import { formatNumber, buildShortUrl, formatDate } from '@/lib/utils';
 import toast from 'react-hot-toast';
 import Link from 'next/link';
 import {
     AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-    PieChart, Pie, Cell, Legend
+    PieChart, Pie, Cell, Legend, BarChart, Bar
 } from 'recharts';
 
 const DEVICE_ICONS = { Mobile: Smartphone, Desktop: Monitor, Tablet };
@@ -38,20 +38,25 @@ export default function LinkDetailPage() {
     const [analytics, setAnalytics] = useState(null);
     const [loading, setLoading] = useState(true);
     const [days, setDays] = useState(30);
+    const [userPlan, setUserPlan] = useState('free');
 
     const fetchData = useCallback(async () => {
         if (!user || !id) return;
         try {
             const token = await user.getIdToken();
-            const [linkRes, analyticsRes] = await Promise.all([
+            const [linkRes, analyticsRes, userRes] = await Promise.all([
                 fetch(`/api/links/${id}`, { headers: { Authorization: `Bearer ${token}` } }),
                 fetch(`/api/analytics/${id}?days=${days}`, { headers: { Authorization: `Bearer ${token}` } }),
+                fetch('/api/users', { headers: { 'x-user-id': user.uid, Authorization: `Bearer ${token}` } })
             ]);
             const linkData = await linkRes.json();
             const analyticsData = await analyticsRes.json();
+            const userData = await userRes.json();
+
             if (linkRes.ok) setLink(linkData.link);
             else { toast.error('Link not found'); router.push('/dashboard/links'); return; }
             if (analyticsRes.ok) setAnalytics(analyticsData);
+            if (userRes.ok) setUserPlan(userData.user?.plan || 'free');
         } catch { toast.error('Failed to load analytics'); }
         finally { setLoading(false); }
     }, [user, id, days, router]);
@@ -233,6 +238,74 @@ export default function LinkDetailPage() {
                     )}
                 </div>
             </div>
+
+            {/* Pro Analytics */}
+            {userPlan === 'free' ? (
+                <div className="card bg-violet-600/5 border-violet-500/20 text-center py-10">
+                    <Zap className="mx-auto mb-3 text-violet-400" size={24} />
+                    <h3 className="text-sm font-bold text-white mb-1">Unlock Advanced Analytics</h3>
+                    <p className="text-xs text-[var(--text-secondary)] mb-4 max-w-xs mx-auto">Get browser, OS, and hourly click data by upgrading to Pro.</p>
+                    <Link href="/dashboard/billing" className="btn-primary h-8 px-4 text-[10px] mx-auto">Upgrade to Pro</Link>
+                </div>
+            ) : (
+                <>
+                    <div className="grid md:grid-cols-2 gap-4">
+                        {/* Browser breakdown */}
+                        <div className="card">
+                            <h3 className="text-sm font-semibold text-white mb-4">Browsers</h3>
+                            <div className="space-y-3">
+                                {analytics?.browserBreakdown?.map(({ name, value }) => {
+                                    const pct = analytics.totalClicks ? Math.round((value / analytics.totalClicks) * 100) : 0;
+                                    return (
+                                        <div key={name} className="flex items-center justify-between">
+                                            <span className="text-xs text-[var(--text-secondary)]">{name}</span>
+                                            <div className="flex items-center gap-3 w-2/3">
+                                                <div className="flex-1 h-1.5 bg-[var(--border)] rounded-full overflow-hidden">
+                                                    <div className="h-full bg-white rounded-full" style={{ width: `${pct}%` }} />
+                                                </div>
+                                                <span className="text-[10px] font-bold text-white min-w-[30px]">{pct}%</span>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        {/* OS breakdown */}
+                        <div className="card">
+                            <h3 className="text-sm font-semibold text-white mb-4">Operating Systems</h3>
+                            <div className="space-y-3">
+                                {analytics?.osBreakdown?.map(({ name, value }) => {
+                                    const pct = analytics.totalClicks ? Math.round((value / analytics.totalClicks) * 100) : 0;
+                                    return (
+                                        <div key={name} className="flex items-center justify-between">
+                                            <span className="text-xs text-[var(--text-secondary)]">{name}</span>
+                                            <div className="flex items-center gap-3 w-2/3">
+                                                <div className="flex-1 h-1.5 bg-[var(--border)] rounded-full overflow-hidden">
+                                                    <div className="h-full bg-white rounded-full" style={{ width: `${pct}%` }} />
+                                                </div>
+                                                <span className="text-[10px] font-bold text-white min-w-[30px]">{pct}%</span>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Hourly Chart */}
+                    <div className="card">
+                        <h3 className="text-sm font-semibold text-white mb-4">Clicks by Hour (24h)</h3>
+                        <ResponsiveContainer width="100%" height={160}>
+                            <BarChart data={analytics?.hourlyData}>
+                                <XAxis dataKey="hour" tick={{ fill: '#737373', fontSize: 10 }} axisLine={false} tickLine={false} />
+                                <Tooltip cursor={{ fill: 'rgba(255,255,255,0.05)' }} contentStyle={{ backgroundColor: '#171717', border: '1px solid #262626', borderRadius: '8px', fontSize: '10px' }} />
+                                <Bar dataKey="count" fill="#ffffff" radius={[2, 2, 0, 0]} />
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
+                </>
+            )}
 
             {/* Referrers */}
             <div className="card">

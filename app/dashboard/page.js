@@ -2,7 +2,9 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '@/components/auth/AuthProvider';
-import { BarChart3, Link2, TrendingUp, ArrowUpRight, Plus, ExternalLink, Copy, Clock, CalendarIcon, Activity } from 'lucide-react';
+import { BarChart3, Link2, TrendingUp, ArrowUpRight, Plus, ExternalLink, Copy, Clock, CalendarIcon, Activity, Zap } from 'lucide-react';
+import { db } from '@/lib/firebase';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { formatNumber, buildShortUrl, formatDate } from '@/lib/utils';
 import toast from 'react-hot-toast';
 import Link from 'next/link';
@@ -28,54 +30,51 @@ export default function DashboardPage() {
     const [loading, setLoading] = useState(true);
     const [stats, setStats] = useState({ totalLinks: 0, totalClicks: 0, topLink: null });
     const [chartData, setChartData] = useState([]);
-    const [timeFilter, setTimeFilter] = useState('15d'); // 'live', '3d', '15d', '30d', 'custom'
+    const [timeFilter, setTimeFilter] = useState('15d');
+    const [pulse, setPulse] = useState(false);
+    const [indexRequired, setIndexRequired] = useState(false);
 
-    const fetchLinks = useCallback(async () => {
+    // Real-time stats listener
+    useEffect(() => {
+        if (!user) return;
+
+        const q = query(collection(db, 'links'), where('userId', '==', user.uid));
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            const linkList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            const totalClicks = linkList.reduce((sum, l) => sum + (l.totalClicks || 0), 0);
+
+            setStats(prev => {
+                if (totalClicks > prev.totalClicks) {
+                    setPulse(true);
+                    setTimeout(() => setPulse(false), 800);
+                }
+                const top = [...linkList].sort((a, b) => (b.totalClicks || 0) - (a.totalClicks || 0))[0];
+                return { totalLinks: linkList.length, totalClicks, topLink: top };
+            });
+            setLinks(linkList);
+        });
+
+        return () => unsubscribe();
+    }, [user]);
+
+    const fetchAnalyticsData = useCallback(async () => {
         if (!user) return;
         try {
             const token = await user.getIdToken();
-            const res = await fetch('/api/links', { headers: { Authorization: `Bearer ${token}` } });
+            let days = 15;
+            if (timeFilter === '3d') days = 3;
+            else if (timeFilter === '30d') days = 30;
+            else if (timeFilter === 'live') days = 1;
+
+            const res = await fetch(`/api/analytics/all?days=${days}`, { headers: { Authorization: `Bearer ${token}` } });
             const data = await res.json();
-            const linkList = data.links || [];
-            setLinks(linkList);
-
-            const totalClicks = linkList.reduce((sum, l) => sum + (l.totalClicks || 0), 0);
-            const topLink = linkList.sort((a, b) => (b.totalClicks || 0) - (a.totalClicks || 0))[0];
-            setStats({ totalLinks: linkList.length, totalClicks, topLink });
-
-            // Generate mock chart data based on filter
-            let daysCount = 15;
-            if (timeFilter === '3d') daysCount = 3;
-            else if (timeFilter === '30d') daysCount = 30;
-            else if (timeFilter === 'live') daysCount = 1; // Show hours
-
-            const days = [];
-            if (timeFilter === 'live') {
-                for (let i = 12; i >= 0; i--) {
-                    const d = new Date(); d.setHours(d.getHours() - i);
-                    days.push({
-                        date: d.toLocaleTimeString('en-US', { hour: 'numeric' }),
-                        clicks: Math.floor(Math.random() * (totalClicks / 50 || 5)) + (i === 0 ? 1 : 0),
-                    });
-                }
-            } else {
-                for (let i = daysCount - 1; i >= 0; i--) {
-                    const d = new Date(); d.setDate(d.getDate() - i);
-                    days.push({
-                        date: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-                        clicks: Math.floor(Math.random() * (totalClicks / 10 || 20)) + (i === 0 ? 1 : 0),
-                    });
-                }
-            }
-            setChartData(days);
-        } catch (err) {
-            console.error(err);
-        } finally {
-            setLoading(false);
-        }
+            setChartData(data.chartData || []);
+            setIndexRequired(data.indexRequired || false);
+        } catch (err) { console.error('Failed to fetch analytics', err); }
+        finally { setLoading(false); }
     }, [user, timeFilter]);
 
-    useEffect(() => { fetchLinks(); }, [fetchLinks]);
+    useEffect(() => { fetchAnalyticsData(); }, [fetchAnalyticsData]);
 
     const copyToClipboard = async (slug) => {
         await navigator.clipboard.writeText(buildShortUrl(slug));
@@ -129,7 +128,13 @@ export default function DashboardPage() {
                             <TrendingUp size={14} className="text-white" />
                         </div>
                     </div>
-                    <div className="text-3xl font-bold text-white mb-1">{formatNumber(stats.totalClicks)}</div>
+                    <div className={`text-3xl font-bold text-white mb-1 transition-all duration-300 ${pulse ? 'scale-110 text-white' : 'scale-100'}`}>
+                        {formatNumber(stats.totalClicks)}
+                        {pulse && <span className="absolute -top-1 -right-1 flex h-2 w-2">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
+                        </span>}
+                    </div>
                     <div className="text-xs font-medium text-[var(--text-muted)]">Across all links</div>
                 </div>
 
@@ -180,23 +185,54 @@ export default function DashboardPage() {
                     </div>
                 </div>
                 {chartData.length > 0 ? (
-                    <ResponsiveContainer width="100%" height={240}>
-                        <AreaChart data={chartData} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
+                    <ResponsiveContainer width="100%" height={260}>
+                        <AreaChart data={chartData} margin={{ top: 20, right: 10, left: -20, bottom: 0 }}>
                             <defs>
                                 <linearGradient id="clickGrad" x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="5%" stopColor="#ffffff" stopOpacity={0.15} />
+                                    <stop offset="5%" stopColor="#ffffff" stopOpacity={0.12} />
                                     <stop offset="95%" stopColor="#ffffff" stopOpacity={0} />
                                 </linearGradient>
                             </defs>
-                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" vertical={false} />
-                            <XAxis dataKey="date" tick={{ fill: '#737373', fontSize: 11, fontWeight: 500 }} axisLine={false} tickLine={false} dy={10} />
-                            <YAxis tick={{ fill: '#737373', fontSize: 11, fontWeight: 500 }} axisLine={false} tickLine={false} dx={-10} allowDecimals={false} />
+                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                            <XAxis
+                                dataKey="date"
+                                tick={{ fill: '#737373', fontSize: 10, fontWeight: 500 }}
+                                axisLine={false}
+                                tickLine={false}
+                                dy={10}
+                                interval={timeFilter === 'live' ? 3 : 'preserveStartEnd'}
+                            />
+                            <YAxis
+                                tick={{ fill: '#737373', fontSize: 10, fontWeight: 500 }}
+                                axisLine={false}
+                                tickLine={false}
+                                dx={-10}
+                                allowDecimals={false}
+                                domain={[0, 'auto']}
+                            />
                             <Tooltip content={<CustomTooltip />} cursor={{ stroke: 'rgba(255,255,255,0.1)', strokeWidth: 1 }} />
-                            <Area type="monotone" dataKey="clicks" stroke="#ffffff" strokeWidth={1.5} fill="url(#clickGrad)" dot={false} activeDot={{ r: 4, fill: '#ffffff', strokeWidth: 0 }} animationDuration={500} />
+                            <Area
+                                type="monotone"
+                                dataKey="clicks"
+                                stroke="#ffffff"
+                                strokeWidth={2}
+                                fill="url(#clickGrad)"
+                                dot={false}
+                                activeDot={{ r: 4, fill: '#ffffff', strokeWidth: 0 }}
+                                animationDuration={1000}
+                                connectNulls
+                            />
                         </AreaChart>
                     </ResponsiveContainer>
+                ) : indexRequired ? (
+                    <div className="h-64 flex flex-col items-center justify-center text-[var(--text-muted)] text-sm font-medium border border-dashed border-[var(--border)] rounded-xl bg-white/[0.01]">
+                        <Clock size={32} className="mb-4 opacity-40 animate-pulse" />
+                        <h3 className="text-white mb-1">Building your analytics...</h3>
+                        <p className="max-w-xs text-center text-xs opacity-60 px-6">Firestore is currently indexing your data. This usually takes 2-5 minutes. Your clicks will appear here automatically.</p>
+                    </div>
                 ) : (
-                    <div className="h-48 flex items-center justify-center text-[var(--text-muted)] text-sm font-medium border border-dashed border-[var(--border)] rounded-lg">
+                    <div className="h-64 flex flex-col items-center justify-center text-[var(--text-muted)] text-sm font-medium border border-dashed border-[var(--border)] rounded-xl bg-white/[0.01]">
+                        <Activity size={32} className="mb-4 opacity-20" />
                         No click data yet. Share your links to get started!
                     </div>
                 )}

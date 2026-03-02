@@ -46,8 +46,10 @@ export async function GET(request, { params }) {
         const byDay = {};
         const byCountry = {};
         const byDevice = {};
+        const byOS = {};
         const byBrowser = {};
         const byReferrer = {};
+        const byHour = new Array(24).fill(0);
 
         for (const click of clicks) {
             const day = click.timestamp?.substring(0, 10);
@@ -59,11 +61,19 @@ export async function GET(request, { params }) {
             const device = click.device || 'Unknown';
             byDevice[device] = (byDevice[device] || 0) + 1;
 
+            const os = click.os || 'Unknown';
+            byOS[os] = (byOS[os] || 0) + 1;
+
             const browser = click.browser || 'Unknown';
             byBrowser[browser] = (byBrowser[browser] || 0) + 1;
 
             const referrer = click.referrer || 'Direct';
             byReferrer[referrer] = (byReferrer[referrer] || 0) + 1;
+
+            if (click.timestamp) {
+                const hour = new Date(click.timestamp).getHours();
+                byHour[hour]++;
+            }
         }
 
         // Build day-by-day array for the full range
@@ -77,16 +87,20 @@ export async function GET(request, { params }) {
 
         const topCountries = Object.entries(byCountry).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([country, count]) => ({ country, count }));
         const deviceBreakdown = Object.entries(byDevice).map(([name, value]) => ({ name, value }));
+        const osBreakdown = Object.entries(byOS).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([name, value]) => ({ name, value }));
         const browserBreakdown = Object.entries(byBrowser).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([name, value]) => ({ name, value }));
         const topReferrers = Object.entries(byReferrer).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([referrer, count]) => ({ referrer, count }));
+        const hourlyData = byHour.map((count, hour) => ({ hour, count }));
 
         return NextResponse.json({
             totalClicks: clicks.length,
             dailyData,
             topCountries,
             deviceBreakdown,
+            osBreakdown,
             browserBreakdown,
             topReferrers,
+            hourlyData,
         });
     } catch (error) {
         console.error('Analytics error:', error);

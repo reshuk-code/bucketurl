@@ -1,6 +1,7 @@
 // app/[slug]/page.js - Short link redirect handler
-import { adminDb } from '@/lib/firebase-admin';
+import { adminDb, adminFirestore } from '@/lib/firebase-admin';
 import { headers } from 'next/headers';
+import { UAParser } from 'ua-parser-js';
 
 export async function generateMetadata({ params }) {
     const { slug } = await params;
@@ -81,22 +82,19 @@ export default async function SlugPage({ params, searchParams }) {
 
     // Fire-and-forget click recording
     try {
-        let device = 'Desktop';
-        let browser = 'Other';
-        if (/mobile/i.test(userAgent)) device = 'Mobile';
-        else if (/tablet|ipad/i.test(userAgent)) device = 'Tablet';
-        if (/chrome/i.test(userAgent) && !/edge/i.test(userAgent)) browser = 'Chrome';
-        else if (/firefox/i.test(userAgent)) browser = 'Firefox';
-        else if (/safari/i.test(userAgent) && !/chrome/i.test(userAgent)) browser = 'Safari';
-        else if (/edge|edg/i.test(userAgent)) browser = 'Edge';
+        const parser = new UAParser(userAgent);
+        const device = parser.getDevice().type || 'Desktop';
+        const browser = parser.getBrowser().name || 'Other';
+        const os = parser.getOS().name || 'Other';
+        const country = headersList.get('x-vercel-ip-country') || headersList.get('cf-ipcountry') || 'Unknown';
 
         await Promise.all([
             adminDb.collection('clicks').add({
-                linkId, shortCode: slug, timestamp: new Date().toISOString(),
-                ip, country: 'Unknown', device, browser, os: 'Other', referrer: referer,
+                linkId, userId: link.userId, shortCode: slug, timestamp: new Date().toISOString(),
+                ip, country, device, browser, os, referrer: referer,
             }),
             adminDb.collection('links').doc(linkId).update({
-                totalClicks: (link.totalClicks || 0) + 1
+                totalClicks: adminFirestore.FieldValue.increment(1)
             })
         ]);
     } catch (e) {

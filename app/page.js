@@ -1,7 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/components/auth/AuthProvider';
 import { BarChart3, Shield, Zap, Users, Globe, Lock, ArrowRight, Check, X as XIcon, Link2, ChevronRight, TrendingUp, Eye } from 'lucide-react';
 
 const FEATURES = [
@@ -58,8 +60,26 @@ const PLANS = [
 ];
 
 export default function LandingPage() {
+  const { user, loading } = useAuth();
+  const router = useRouter();
   const [billing, setBilling] = useState('monthly');
   const [demoUrl, setDemoUrl] = useState('');
+
+  // Redirect to dashboard if logged in
+  useEffect(() => {
+    if (!loading && user) {
+      router.replace('/dashboard');
+    }
+  }, [user, loading, router]);
+
+  // While checking auth, show a simple loader or nothing to prevent flashing
+  if (loading || user) {
+    return (
+      <div className="min-h-screen bg-[var(--bg)] flex items-center justify-center">
+        <div className="w-8 h-8 rounded-full border-2 border-white/20 border-t-white animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[var(--bg)] relative overflow-hidden font-sans">
@@ -76,8 +96,14 @@ export default function LandingPage() {
           <div className="hidden md:flex items-center gap-6">
             <Link href="#features" className="text-sm font-medium text-[var(--text-secondary)] hover:text-white transition-colors">Features</Link>
             <Link href="#pricing" className="text-sm font-medium text-[var(--text-secondary)] hover:text-white transition-colors">Pricing</Link>
-            <Link href="/login" className="text-sm font-medium text-[var(--text-secondary)] hover:text-white transition-colors">Sign In</Link>
-            <Link href="/signup" className="btn-primary text-sm font-semibold h-9 px-4">Get Started</Link>
+            {user ? (
+              <Link href="/dashboard" className="btn-primary text-sm font-semibold h-9 px-4">Dashboard</Link>
+            ) : (
+              <>
+                <Link href="/login" className="text-sm font-medium text-[var(--text-secondary)] hover:text-white transition-colors">Sign In</Link>
+                <Link href="/signup" className="btn-primary text-sm font-semibold h-9 px-4">Get Started</Link>
+              </>
+            )}
           </div>
         </div>
       </nav>
