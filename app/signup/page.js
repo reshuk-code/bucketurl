@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/components/auth/AuthProvider';
@@ -10,6 +10,18 @@ import { Link2, Mail, Lock, User, Eye, EyeOff, Chrome, ArrowRight, Loader2, Chec
 const PLAN_LABELS = { pro: 'Pro', team: 'Team' };
 
 export default function SignUpPage() {
+    return (
+        <Suspense fallback={
+            <div className="min-h-screen flex items-center justify-center">
+                <div className="w-8 h-8 rounded-full border-2 border-[var(--border)] border-t-violet-500 animate-spin" />
+            </div>
+        }>
+            <SignUpForm />
+        </Suspense>
+    );
+}
+
+function SignUpForm() {
     const { signUp, signInWithGoogle } = useAuth();
     const router = useRouter();
     const searchParams = useSearchParams();

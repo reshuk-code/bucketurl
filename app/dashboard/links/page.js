@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, Suspense } from 'react';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { useSearchParams } from 'next/navigation';
 import {
@@ -256,6 +256,19 @@ function QRModal({ link, onClose }) {
 
 // Main Page
 export default function LinksPage() {
+    return (
+        <Suspense fallback={
+            <div className="p-6 md:p-8 space-y-4 max-w-6xl mx-auto">
+                <div className="skeleton h-10 w-full rounded-md mb-6" />
+                {[1, 2, 3, 4].map(i => <div key={i} className="skeleton h-20 rounded-lg" />)}
+            </div>
+        }>
+            <LinksList />
+        </Suspense>
+    );
+}
+
+function LinksList() {
     const { user } = useAuth();
     const searchParams = useSearchParams();
     const [links, setLinks] = useState([]);
