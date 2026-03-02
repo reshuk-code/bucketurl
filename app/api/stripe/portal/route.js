@@ -17,9 +17,11 @@ export async function POST(request) {
         const customerId = userDoc.data()?.stripeCustomerId;
         if (!customerId) return NextResponse.json({ error: 'No subscription found' }, { status: 404 });
 
+        const origin = request.headers.get('origin') || `${request.headers.get('x-forwarded-proto') || 'http'}://${request.headers.get('host')}`;
+
         const session = await stripe.billingPortal.sessions.create({
             customer: customerId,
-            return_url: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/billing`,
+            return_url: `${origin}/dashboard/billing`,
         });
 
         return NextResponse.json({ url: session.url });

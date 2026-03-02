@@ -29,13 +29,15 @@ export async function POST(request) {
             await adminDb.collection('users').doc(uid).update({ stripeCustomerId: customerId });
         }
 
+        const origin = request.headers.get('origin') || `${request.headers.get('x-forwarded-proto') || 'http'}://${request.headers.get('host')}`;
+
         const session = await stripe.checkout.sessions.create({
             customer: customerId,
             payment_method_types: ['card'],
             line_items: [{ price: priceId, quantity: 1 }],
             mode: 'subscription',
-            success_url: `${process.env.NEXT_PUBLIC_APP_URL}/billing?success=true`,
-            cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/pricing`,
+            success_url: `${origin}/dashboard/billing?success=true`,
+            cancel_url: `${origin}/dashboard/billing`,
             metadata: { uid, plan },
             subscription_data: { metadata: { uid, plan } },
         });
