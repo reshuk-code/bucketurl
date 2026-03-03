@@ -2,14 +2,31 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '@/components/auth/AuthProvider';
-import { BarChart3, Link2, TrendingUp, ArrowUpRight, Plus, ExternalLink, Copy, Clock, CalendarIcon, Activity, Zap } from 'lucide-react';
+import {
+    BarChart3,
+    Link2,
+    TrendingUp,
+    ArrowUpRight,
+    Plus,
+    ExternalLink,
+    Copy,
+    Clock,
+    CalendarIcon,
+    Activity,
+} from 'lucide-react';
 import { db } from '@/lib/firebase';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
-import { formatNumber, buildShortUrl, formatDate } from '@/lib/utils';
+import { formatNumber, buildShortUrl } from '@/lib/utils';
 import toast from 'react-hot-toast';
 import Link from 'next/link';
 import {
-    AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
+    AreaChart,
+    Area,
+    XAxis,
+    YAxis,
+    CartesianGrid,
+    Tooltip,
+    ResponsiveContainer,
 } from 'recharts';
 
 const CustomTooltip = ({ active, payload, label }) => {
@@ -24,69 +41,151 @@ const CustomTooltip = ({ active, payload, label }) => {
     return null;
 };
 
+function formatHourLabel(hour) {
+    const d = new Date();
+    d.setHours(hour, 0, 0, 0);
+    return d.toLocaleTimeString('en-US', { hour: 'numeric' });
+}
+
+function resolveDays(filter) {
+    if (filter === 'live') return 1;
+    if (filter === '3d') return 3;
+    if (filter === '30d') return 30;
+    return 15;
+}
+
 export default function DashboardPage() {
     const { user } = useAuth();
-    const [links, setLinks] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [stats, setStats] = useState({ totalLinks: 0, totalClicks: 0, topLink: null });
-    const [chartData, setChartData] = useState([]);
-    const [timeFilter, setTimeFilter] = useState('15d');
-    const [pulse, setPulse] = useState(false);
-    const [indexRequired, setIndexRequired] = useState(false);
 
-    // Real-time stats listener
+    const [links, setLinks] = useState([]);
+    const [stats, setStats] = useState({ totalLinks: 0, totalClicks: 0, topLink: null });
+
+    const [timeFilter, setTimeFilter] = useState('15d'); // live | 3d | 15d | 30d
+    const [selectedScope, setSelectedScope] = useState('all'); // 'all' | linkId
+    const [scopeOpen, setScopeOpen] = useState(false);
+
+    const [chartData, setChartData] = useState([]);
+    const [indexRequired, setIndexRequired] = useState(false);
+    const [loadingStats, setLoadingStats] = useState(true);
+    const [loadingChart, setLoadingChart] = useState(true);
+    const [pulse, setPulse] = useState(false);
+
+    // Real-time stats listener (links + total clicks + top link)
     useEffect(() => {
         if (!user) return;
 
         const q = query(collection(db, 'links'), where('userId', '==', user.uid));
         const unsubscribe = onSnapshot(q, (snapshot) => {
-            const linkList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            const linkList = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
             const totalClicks = linkList.reduce((sum, l) => sum + (l.totalClicks || 0), 0);
 
-            setStats(prev => {
+            setStats((prev) => {
                 if (totalClicks > prev.totalClicks) {
                     setPulse(true);
                     setTimeout(() => setPulse(false), 800);
                 }
-                const top = [...linkList].sort((a, b) => (b.totalClicks || 0) - (a.totalClicks || 0))[0];
+                const top = [...linkList].sort(
+                    (a, b) => (b.totalClicks || 0) - (a.totalClicks || 0),
+                )[0];
                 return { totalLinks: linkList.length, totalClicks, topLink: top };
             });
+
             setLinks(linkList);
+            setLoadingStats(false);
         });
 
         return () => unsubscribe();
     }, [user]);
 
+    // Fetch analytics for chart (aggregated or per-link) using real click data
     const fetchAnalyticsData = useCallback(async () => {
         if (!user) return;
         try {
+            setLoadingChart(true);
             const token = await user.getIdToken();
-            let days = 15;
-            if (timeFilter === '3d') days = 3;
-            else if (timeFilter === '30d') days = 30;
-            else if (timeFilter === 'live') days = 1;
+            const days = resolveDays(timeFilter);
+            const tzOffset = new Date().getTimezoneOffset(); // minutes offset from UTC
 
-            const res = await fetch(`/api/analytics/all?days=${days}`, { headers: { Authorization: `Bearer ${token}` } });
-            const data = await res.json();
-            setChartData(data.chartData || []);
-            setIndexRequired(data.indexRequired || false);
-        } catch (err) { console.error('Failed to fetch analytics', err); }
-        finally { setLoading(false); }
-    }, [user, timeFilter]);
+            if (selectedScope === 'all') {
+                const res = await fetch(`/api/analytics/all?days=${days}&tzOffset=${tzOffset}`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                });
+                const data = await res.json();
 
-    useEffect(() => { fetchAnalyticsData(); }, [fetchAnalyticsData]);
+                if (!res.ok) {
+                    console.error('GET /api/analytics/all failed:', data);
+                    setChartData([]);
+                    setIndexRequired(false);
+                    return;
+                }
+
+                setChartData(data.chartData || []);
+                setIndexRequired(data.indexRequired || false);
+            } else {
+                const res = await fetch(
+                    `/api/analytics/${selectedScope}?days=${days}&tzOffset=${tzOffset}`,
+                    {
+                    headers: { Authorization: `Bearer ${token}` },
+                    },
+                );
+                const data = await res.json();
+
+                if (!res.ok) {
+                    console.error('GET /api/analytics/[linkId] failed:', data);
+                    setChartData([]);
+                    setIndexRequired(false);
+                    return;
+                }
+
+                if (timeFilter === 'live') {
+                    const hourly = data.hourlyData || [];
+                    setChartData(
+                        hourly.map((h) => ({
+                            date: h.label || formatHourLabel(h.hour),
+                            clicks: h.count,
+                        })),
+                    );
+                } else {
+                    const daily = data.dailyData || [];
+                    setChartData(
+                        daily.map((d) => ({
+                            date: new Date(d.date).toLocaleDateString('en-US', {
+                                month: 'short',
+                                day: 'numeric',
+                            }),
+                            clicks: d.clicks,
+                        })),
+                    );
+                }
+                setIndexRequired(false);
+            }
+        } catch (err) {
+            console.error('Failed to fetch analytics', err);
+            setChartData([]);
+            setIndexRequired(false);
+        } finally {
+            setLoadingChart(false);
+        }
+    }, [user, timeFilter, selectedScope]);
+
+    // Refresh chart when filters or live stats change
+    useEffect(() => {
+        fetchAnalyticsData();
+    }, [fetchAnalyticsData, stats.totalClicks]);
 
     const copyToClipboard = async (slug) => {
         await navigator.clipboard.writeText(buildShortUrl(slug));
         toast.success('Copied to clipboard!');
     };
 
-    if (loading) {
+    if (loadingStats && loadingChart) {
         return (
             <div className="p-6 space-y-4">
                 <div className="skeleton h-8 w-48 mb-6" />
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {[1, 2, 3].map(i => <div key={i} className="skeleton h-28 rounded-xl" />)}
+                    {[1, 2, 3].map((i) => (
+                        <div key={i} className="skeleton h-28 rounded-xl" />
+                    ))}
                 </div>
                 <div className="skeleton h-56 rounded-xl" />
             </div>
@@ -94,97 +193,220 @@ export default function DashboardPage() {
     }
 
     const displayName = user?.displayName?.split(' ')[0] || 'there';
+    const currentScopeLabel =
+        selectedScope === 'all'
+            ? 'All links'
+            : links.find((l) => l.id === selectedScope)?.title ||
+              links.find((l) => l.id === selectedScope)?.shortCode ||
+              'Selected link';
 
     return (
         <div className="p-6 md:p-8 space-y-8 animate-fade-in max-w-6xl mx-auto">
             {/* Header */}
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-4">
                 <div>
-                    <h1 className="text-2xl font-bold text-white tracking-tight">Good day, {displayName}</h1>
-                    <p className="text-sm font-medium text-[var(--text-secondary)] mt-1">Here&apos;s what&apos;s happening with your links</p>
+                    <h1 className="text-2xl md:text-3xl font-semibold text-white tracking-tight">
+                        Good day, {displayName}
+                    </h1>
+                    <p className="text-sm font-medium text-[var(--text-secondary)] mt-1">
+                        High-level overview of everything happening across your workspace.
+                    </p>
                 </div>
-                <Link href="/dashboard/links?new=true" className="btn-primary h-9 px-4">
+                <Link href="/dashboard/links?new=true" className="btn-primary h-9 px-4 md:px-5">
                     <Plus size={15} /> New Link
                 </Link>
             </div>
 
-            {/* Stat Cards */}
+            {/* Stat Row */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="card">
-                    <div className="flex items-center justify-between mb-4">
-                        <span className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">Total Links</span>
+                <div className="card relative overflow-hidden">
+                    <div className="absolute inset-0 bg-gradient-to-tr from-white/[0.04] via-transparent to-transparent pointer-events-none" />
+                    <div className="flex items-center justify-between mb-4 relative z-10">
+                        <span className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">
+                            Total Links
+                        </span>
                         <div className="w-8 h-8 rounded border border-[var(--border)] bg-[var(--bg)] flex items-center justify-center">
                             <Link2 size={14} className="text-white" />
                         </div>
                     </div>
-                    <div className="text-3xl font-bold text-white mb-1">{formatNumber(stats.totalLinks)}</div>
-                    <div className="text-xs font-medium text-[var(--text-muted)]">Active short links</div>
+                    <div className="text-3xl font-semibold text-white mb-1 relative z-10">
+                        {formatNumber(stats.totalLinks)}
+                    </div>
+                    <div className="text-xs font-medium text-[var(--text-muted)] relative z-10">
+                        Active short links
+                    </div>
                 </div>
 
-                <div className="card">
-                    <div className="flex items-center justify-between mb-4">
-                        <span className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">Total Clicks</span>
+                <div className="card relative overflow-hidden">
+                    <div className="absolute inset-0 bg-gradient-to-tr from-emerald-500/10 via-transparent to-transparent pointer-events-none" />
+                    <div className="flex items-center justify-between mb-4 relative z-10">
+                        <span className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">
+                            Total Clicks
+                        </span>
                         <div className="w-8 h-8 rounded border border-[var(--border)] bg-[var(--bg)] flex items-center justify-center">
                             <TrendingUp size={14} className="text-white" />
                         </div>
                     </div>
-                    <div className={`text-3xl font-bold text-white mb-1 transition-all duration-300 ${pulse ? 'scale-110 text-white' : 'scale-100'}`}>
+                    <div
+                        className={`text-3xl font-semibold text-white mb-1 relative z-10 transition-transform duration-300 ${
+                            pulse ? 'scale-110' : 'scale-100'
+                        }`}
+                    >
                         {formatNumber(stats.totalClicks)}
-                        {pulse && <span className="absolute -top-1 -right-1 flex h-2 w-2">
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
-                            <span className="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
-                        </span>}
                     </div>
-                    <div className="text-xs font-medium text-[var(--text-muted)]">Across all links</div>
+                    <div className="text-xs font-medium text-[var(--text-muted)] relative z-10">
+                        Across all links
+                    </div>
                 </div>
 
                 <div className="card">
                     <div className="flex items-center justify-between mb-4">
-                        <span className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">Top Link</span>
+                        <span className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">
+                            Top Link
+                        </span>
                         <div className="w-8 h-8 rounded border border-[var(--border)] bg-[var(--bg)] flex items-center justify-center">
                             <BarChart3 size={14} className="text-white" />
                         </div>
                     </div>
                     {stats.topLink ? (
                         <>
-                            <div className="text-lg font-bold text-white truncate mb-1">{stats.topLink.title || 'Untitled Link'}</div>
-                            <div className="text-xs font-medium text-[var(--text-muted)]">{formatNumber(stats.topLink.totalClicks || 0)} clicks</div>
+                            <div className="text-sm font-semibold text-white truncate mb-1">
+                                {stats.topLink.title || 'Untitled Link'}
+                            </div>
+                            <p className="text-xs text-[var(--text-secondary)] truncate mb-1">
+                                bkt.url/{stats.topLink.shortCode}
+                            </p>
+                            <div className="text-xs font-medium text-[var(--text-muted)]">
+                                {formatNumber(stats.topLink.totalClicks || 0)} clicks
+                            </div>
                         </>
                     ) : (
-                        <div className="text-sm font-medium text-[var(--text-muted)] pt-2">Create your first link to see stats</div>
+                        <div className="text-sm font-medium text-[var(--text-muted)] pt-2">
+                            Create your first link to see performance.
+                        </div>
                     )}
                 </div>
             </div>
 
-            {/* Click Chart */}
+            {/* Analytics Card */}
             <div className="card">
-                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-4">
+                <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4">
                     <div>
-                        <h2 className="text-sm font-bold text-white tracking-tight">Click Trends</h2>
-                        <p className="text-xs font-medium text-[var(--text-muted)] mt-1">Aggregate analytics for your workspace</p>
+                        <h2 className="text-sm font-semibold text-white tracking-tight">
+                            Click Trends
+                        </h2>
+                        <p className="text-xs font-medium text-[var(--text-muted)] mt-1">
+                            {selectedScope === 'all'
+                                ? 'Real-time aggregate of all link activity.'
+                                : 'Real-time performance for the selected link.'}
+                        </p>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-3 flex-wrap justify-start md:justify-end">
+                        {/* Custom scope selector */}
+                        <div className="relative">
+                            <button
+                                type="button"
+                                onClick={() => setScopeOpen((o) => !o)}
+                                className="flex items-center gap-2 px-3 py-1.5 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] text-xs font-medium text-[var(--text-secondary)] hover:border-white/60 hover:text-white transition-colors"
+                            >
+                                <span className="inline-flex h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                                <span className="truncate max-w-[140px] text-left">{currentScopeLabel}</span>
+                                <span className="text-[10px] opacity-70">▼</span>
+                            </button>
+                            {scopeOpen && (
+                                <div className="absolute right-0 mt-1 w-56 max-h-64 overflow-y-auto rounded-md border border-[var(--border)] bg-[var(--bg)] shadow-2xl z-20">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setSelectedScope('all');
+                                            setScopeOpen(false);
+                                        }}
+                                        className={`w-full px-3 py-2 text-xs text-left hover:bg-white/5 flex items-center justify-between ${
+                                            selectedScope === 'all'
+                                                ? 'text-white'
+                                                : 'text-[var(--text-secondary)]'
+                                        }`}
+                                    >
+                                        <span>All links</span>
+                                        {selectedScope === 'all' && (
+                                            <span className="text-[10px] text-emerald-400 font-semibold">
+                                                Live
+                                            </span>
+                                        )}
+                                    </button>
+                                    <div className="border-t border-[var(--border)] my-1" />
+                                    {links.map((l) => (
+                                        <button
+                                            key={l.id}
+                                            type="button"
+                                            onClick={() => {
+                                                setSelectedScope(l.id);
+                                                setScopeOpen(false);
+                                            }}
+                                            className={`w-full px-3 py-2 text-xs text-left hover:bg-white/5 flex flex-col ${
+                                                selectedScope === l.id
+                                                    ? 'text-white'
+                                                    : 'text-[var(--text-secondary)]'
+                                            }`}
+                                        >
+                                            <span className="truncate">
+                                                {l.title || l.shortCode || 'Untitled link'}
+                                            </span>
+                                            <span className="text-[10px] text-[var(--text-muted)] truncate">
+                                                bkt.url/{l.shortCode}
+                                            </span>
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Time filter */}
                         <div className="flex p-0.5 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-md">
                             {[
                                 { val: 'live', label: 'Live', icon: Activity },
                                 { val: '3d', label: '3d' },
                                 { val: '15d', label: '15d' },
                                 { val: '30d', label: '30d' },
-                                { val: 'custom', label: <CalendarIcon size={12} /> }
-                            ].map(t => (
+                            ].map((t) => (
                                 <button
                                     key={t.val}
                                     onClick={() => setTimeFilter(t.val)}
-                                    className={`px-3 py-1.5 rounded text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-colors ${timeFilter === t.val ? 'bg-[var(--bg)] text-white shadow-sm border border-[var(--border)]' : 'text-[var(--text-muted)] hover:text-white border border-transparent'}`}
+                                    className={`px-3 py-1.5 rounded text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-colors ${
+                                        timeFilter === t.val
+                                            ? 'bg-[var(--bg)] text-white shadow-sm border border-[var(--border)]'
+                                            : 'text-[var(--text-muted)] hover:text-white border border-transparent'
+                                    }`}
                                 >
-                                    {t.icon && <t.icon size={12} className={timeFilter === t.val && t.val === 'live' ? 'text-red-400 animate-pulse' : ''} />}
+                                    {t.icon && (
+                                        <t.icon
+                                            size={12}
+                                            className={
+                                                timeFilter === t.val && t.val === 'live'
+                                                    ? 'text-emerald-400 animate-pulse'
+                                                    : ''
+                                            }
+                                        />
+                                    )}
                                     {t.label}
                                 </button>
                             ))}
+                            <button
+                                className="hidden md:inline-flex items-center px-2 text-[10px] text-[var(--text-muted)]"
+                                disabled
+                            >
+                                <CalendarIcon size={11} className="mr-1 opacity-70" />
+                                Range
+                            </button>
                         </div>
                     </div>
                 </div>
-                {chartData.length > 0 ? (
+
+                {loadingChart ? (
+                    <div className="h-64 flex items-center justify-center">
+                        <div className="skeleton h-40 w-full rounded-xl" />
+                    </div>
+                ) : chartData.length > 0 ? (
                     <ResponsiveContainer width="100%" height={260}>
                         <AreaChart data={chartData} margin={{ top: 20, right: 10, left: -20, bottom: 0 }}>
                             <defs>
@@ -193,7 +415,11 @@ export default function DashboardPage() {
                                     <stop offset="95%" stopColor="#ffffff" stopOpacity={0} />
                                 </linearGradient>
                             </defs>
-                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                            <CartesianGrid
+                                strokeDasharray="3 3"
+                                stroke="rgba(255,255,255,0.05)"
+                                vertical={false}
+                            />
                             <XAxis
                                 dataKey="date"
                                 tick={{ fill: '#737373', fontSize: 10, fontWeight: 500 }}
@@ -210,7 +436,10 @@ export default function DashboardPage() {
                                 allowDecimals={false}
                                 domain={[0, 'auto']}
                             />
-                            <Tooltip content={<CustomTooltip />} cursor={{ stroke: 'rgba(255,255,255,0.1)', strokeWidth: 1 }} />
+                            <Tooltip
+                                content={<CustomTooltip />}
+                                cursor={{ stroke: 'rgba(255,255,255,0.1)', strokeWidth: 1 }}
+                            />
                             <Area
                                 type="monotone"
                                 dataKey="clicks"
@@ -219,7 +448,7 @@ export default function DashboardPage() {
                                 fill="url(#clickGrad)"
                                 dot={false}
                                 activeDot={{ r: 4, fill: '#ffffff', strokeWidth: 0 }}
-                                animationDuration={1000}
+                                animationDuration={600}
                                 connectNulls
                             />
                         </AreaChart>
@@ -227,22 +456,33 @@ export default function DashboardPage() {
                 ) : indexRequired ? (
                     <div className="h-64 flex flex-col items-center justify-center text-[var(--text-muted)] text-sm font-medium border border-dashed border-[var(--border)] rounded-xl bg-white/[0.01]">
                         <Clock size={32} className="mb-4 opacity-40 animate-pulse" />
-                        <h3 className="text-white mb-1">Building your analytics...</h3>
-                        <p className="max-w-xs text-center text-xs opacity-60 px-6">Firestore is currently indexing your data. This usually takes 2-5 minutes. Your clicks will appear here automatically.</p>
+                        <h3 className="text-white mb-1">Building your analytics…</h3>
+                        <p className="max-w-xs text-center text-xs opacity-60 px-6">
+                            Firestore is currently indexing your data. This usually takes 2–5 minutes. Your
+                            clicks will appear here automatically.
+                        </p>
                     </div>
                 ) : (
                     <div className="h-64 flex flex-col items-center justify-center text-[var(--text-muted)] text-sm font-medium border border-dashed border-[var(--border)] rounded-xl bg-white/[0.01]">
                         <Activity size={32} className="mb-4 opacity-20" />
-                        No click data yet. Share your links to get started!
+                        No click data yet. Share your links to get started.
                     </div>
                 )}
             </div>
 
-            {/* Recent Links */}
+            {/* Recent Links (single place for actionable controls to avoid duplication) */}
             <div className="card">
                 <div className="flex items-center justify-between mb-4 border-b border-[var(--border)] pb-4">
-                    <h2 className="text-sm font-bold text-white tracking-tight">Recent Links</h2>
-                    <Link href="/dashboard/links" className="text-xs font-bold text-[var(--text-secondary)] hover:text-white transition-colors flex items-center gap-1">
+                    <div>
+                        <h2 className="text-sm font-semibold text-white tracking-tight">Recent Links</h2>
+                        <p className="text-xs text-[var(--text-muted)] mt-1">
+                            Quick snapshot of the latest activity in your workspace.
+                        </p>
+                    </div>
+                    <Link
+                        href="/dashboard/links"
+                        className="text-xs font-bold text-[var(--text-secondary)] hover:text-white transition-colors flex items-center gap-1"
+                    >
                         View all <ArrowUpRight size={12} />
                     </Link>
                 </div>
@@ -252,31 +492,51 @@ export default function DashboardPage() {
                         <div className="w-10 h-10 rounded-full border border-[var(--border)] bg-[var(--bg-secondary)] flex items-center justify-center mx-auto mb-4">
                             <Link2 size={16} className="text-[var(--text-muted)]" />
                         </div>
-                        <p className="text-sm font-medium text-[var(--text-secondary)] mb-4">No links generated yet.</p>
-                        <Link href="/dashboard/links?new=true" className="btn-primary mx-auto">
-                            <Plus size={14} /> Create your first link
-                        </Link>
+                        <p className="text-sm font-medium text-[var(--text-secondary)] mb-2">
+                            You haven&apos;t created any links yet.
+                        </p>
+                        <p className="text-xs text-[var(--text-muted)]">
+                            Use the{" "}
+                            <span className="font-semibold text-white">New Link</span> button in the top-right
+                            corner to create your first short link.
+                        </p>
                     </div>
                 ) : (
                     <div className="divide-y divide-[var(--border)] -mx-4 px-4">
-                        {links.slice(0, 5).map(link => (
+                        {links.slice(0, 5).map((link) => (
                             <div key={link.id} className="flex items-center gap-4 py-3 group">
                                 <div className="w-8 h-8 rounded border border-[var(--border)] bg-[var(--bg)] flex items-center justify-center flex-shrink-0">
                                     <Link2 size={14} className="text-white" />
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                    <p className="text-sm font-bold text-white truncate">{link.title || 'Untitled Link'}</p>
-                                    <p className="text-xs font-medium text-[var(--text-secondary)] truncate">bkt.url/{link.shortCode}</p>
+                                    <p className="text-sm font-semibold text-white truncate">
+                                        {link.title || 'Untitled Link'}
+                                    </p>
+                                    <p className="text-xs font-medium text-[var(--text-secondary)] truncate">
+                                        bkt.url/{link.shortCode}
+                                    </p>
                                 </div>
-                                <div className="text-right flex-shrink-0">
-                                    <p className="text-sm font-bold text-white">{formatNumber(link.totalClicks || 0)}</p>
-                                    <p className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wider">clicks</p>
+                                <div className="text-right flex-shrink-0 pr-4">
+                                    <p className="text-sm font-semibold text-white">
+                                        {formatNumber(link.totalClicks || 0)}
+                                    </p>
+                                    <p className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wider">
+                                        clicks
+                                    </p>
                                 </div>
-                                <div className="flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity ml-2">
-                                    <button onClick={() => copyToClipboard(link.shortCode)} className="p-1.5 rounded border border-transparent hover:border-[var(--border)] hover:bg-[var(--bg)] text-[var(--text-secondary)] hover:text-white transition-all">
+                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity ml-2">
+                                    <button
+                                        onClick={() => copyToClipboard(link.shortCode)}
+                                        className="p-1.5 rounded border border-transparent hover:border-[var(--border)] hover:bg-[var(--bg)] text-[var(--text-secondary)] hover:text-white transition-all"
+                                    >
                                         <Copy size={13} />
                                     </button>
-                                    <a href={buildShortUrl(link.shortCode)} target="_blank" rel="noreferrer" className="p-1.5 rounded border border-transparent hover:border-[var(--border)] hover:bg-[var(--bg)] text-[var(--text-secondary)] hover:text-white transition-all">
+                                    <a
+                                        href={buildShortUrl(link.shortCode)}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="p-1.5 rounded border border-transparent hover:border-[var(--border)] hover:bg-[var(--bg)] text-[var(--text-secondary)] hover:text-white transition-all"
+                                    >
                                         <ExternalLink size={13} />
                                     </a>
                                 </div>
@@ -288,3 +548,4 @@ export default function DashboardPage() {
         </div>
     );
 }
+

@@ -44,9 +44,11 @@ export default function LinkDetailPage() {
         if (!user || !id) return;
         try {
             const token = await user.getIdToken();
+            const tzOffset = new Date().getTimezoneOffset();
+
             const [linkRes, analyticsRes, userRes] = await Promise.all([
                 fetch(`/api/links/${id}`, { headers: { Authorization: `Bearer ${token}` } }),
-                fetch(`/api/analytics/${id}?days=${days}`, { headers: { Authorization: `Bearer ${token}` } }),
+                fetch(`/api/analytics/${id}?days=${days}&tzOffset=${tzOffset}`, { headers: { Authorization: `Bearer ${token}` } }),
                 fetch('/api/users', { headers: { 'x-user-id': user.uid, Authorization: `Bearer ${token}` } })
             ]);
             const linkData = await linkRes.json();
@@ -295,11 +297,19 @@ export default function LinkDetailPage() {
 
                     {/* Hourly Chart */}
                     <div className="card">
-                        <h3 className="text-sm font-semibold text-white mb-4">Clicks by Hour (24h)</h3>
+                        <h3 className="text-sm font-semibold text-white mb-4">Clicks by Hour (Last 24h)</h3>
                         <ResponsiveContainer width="100%" height={160}>
                             <BarChart data={analytics?.hourlyData}>
-                                <XAxis dataKey="hour" tick={{ fill: '#737373', fontSize: 10 }} axisLine={false} tickLine={false} />
-                                <Tooltip cursor={{ fill: 'rgba(255,255,255,0.05)' }} contentStyle={{ backgroundColor: '#171717', border: '1px solid #262626', borderRadius: '8px', fontSize: '10px' }} />
+                                <XAxis dataKey="label" tick={{ fill: '#737373', fontSize: 10 }} axisLine={false} tickLine={false} interval={3} />
+                                <Tooltip
+                                    cursor={{ fill: 'rgba(255,255,255,0.05)' }}
+                                    contentStyle={{
+                                        backgroundColor: '#171717',
+                                        border: '1px solid #262626',
+                                        borderRadius: '8px',
+                                        fontSize: '10px',
+                                    }}
+                                />
                                 <Bar dataKey="count" fill="#ffffff" radius={[2, 2, 0, 0]} />
                             </BarChart>
                         </ResponsiveContainer>

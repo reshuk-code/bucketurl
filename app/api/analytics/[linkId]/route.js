@@ -27,9 +27,15 @@ export async function GET(request, { params }) {
         }
 
         const { searchParams } = new URL(request.url);
-        const days = parseInt(searchParams.get('days') || '30');
-        const startDate = new Date();
-        startDate.setDate(startDate.getDate() - days);
+        const days = parseInt(searchParams.get('days') || '30', 10);
+        const tzOffset = parseInt(searchParams.get('tzOffset') || '0', 10); // minutes from getTimezoneOffset
+
+        // Range in local time, convert to UTC for Firestore query
+        const nowLocal = new Date(Date.now() - tzOffset * 60_000);
+        const localStart = new Date(nowLocal);
+        localStart.setDate(localStart.getDate() - days);
+        localStart.setHours(0, 0, 0, 0);
+        const startDateUtc = new Date(localStart.getTime() + tzOffset * 60_000);
 
         const clicksSnapshot = await adminDb.collection('clicks')
             .where('linkId', '==', linkId)
@@ -38,7 +44,7 @@ export async function GET(request, { params }) {
         let clicks = clicksSnapshot.docs.map(d => d.data());
 
         // Filter and sort in memory
-        clicks = clicks.filter(c => c.timestamp && new Date(c.timestamp) >= startDate);
+        clicks = clicks.filter(c => c.timestamp && new Date(c.timestamp) >= startDateUtc);
         clicks.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
         clicks = clicks.slice(0, 10000);
 
@@ -49,10 +55,13 @@ export async function GET(request, { params }) {
         const byOS = {};
         const byBrowser = {};
         const byReferrer = {};
-        const byHour = new Array(24).fill(0);
 
         for (const click of clicks) {
-            const day = click.timestamp?.substring(0, 10);
+            const tsUtc = click.timestamp ? new Date(click.timestamp) : null;
+            if (!tsUtc || Number.isNaN(tsUtc.getTime())) continue;
+            const tsLocal = new Date(tsUtc.getTime() - tzOffset * 60_000);
+
+            const day = tsLocal.toISOString().substring(0, 10);
             if (day) byDay[day] = (byDay[day] || 0) + 1;
 
             const country = click.country || 'Unknown';
@@ -69,19 +78,14 @@ export async function GET(request, { params }) {
 
             const referrer = click.referrer || 'Direct';
             byReferrer[referrer] = (byReferrer[referrer] || 0) + 1;
-
-            if (click.timestamp) {
-                const hour = new Date(click.timestamp).getHours();
-                byHour[hour]++;
-            }
         }
 
         // Build day-by-day array for the full range
         const dailyData = [];
         for (let i = days - 1; i >= 0; i--) {
-            const d = new Date();
-            d.setDate(d.getDate() - i);
-            const key = d.toISOString().substring(0, 10);
+            const dLocal = new Date(nowLocal);
+            dLocal.setDate(dLocal.getDate() - i);
+            const key = dLocal.toISOString().substring(0, 10);
             dailyData.push({ date: key, clicks: byDay[key] || 0 });
         }
 
@@ -90,7 +94,31 @@ export async function GET(request, { params }) {
         const osBreakdown = Object.entries(byOS).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([name, value]) => ({ name, value }));
         const browserBreakdown = Object.entries(byBrowser).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([name, value]) => ({ name, value }));
         const topReferrers = Object.entries(byReferrer).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([referrer, count]) => ({ referrer, count }));
-        const hourlyData = byHour.map((count, hour) => ({ hour, count }));
+        // Build rolling 24h hourly series in local time
+        const hourlyData = [];
+        const endBaseLocal = new Date(nowLocal);
+        endBaseLocal.setMinutes(0, 0, 0);
+        for (let i = 23; i >= 0; i--) {
+            const bucketEndLocal = new Date(endBaseLocal.getTime() - i * 60 * 60 * 1000);
+            const bucketStartLocal = new Date(bucketEndLocal.getTime() - 60 * 60 * 1000);
+            const bucketStartUtc = new Date(bucketStartLocal.getTime() + tzOffset * 60_000);
+            const bucketEndUtc = new Date(bucketEndLocal.getTime() + tzOffset * 60_000);
+
+            const count = clicks.filter((c) => {
+                if (!c.timestamp) return false;
+                const ts = new Date(c.timestamp);
+                return ts >= bucketStartUtc && ts < bucketEndUtc;
+            }).length;
+
+            hourlyData.push({
+                hour: bucketEndLocal.getHours(),
+                label: bucketEndLocal.toLocaleTimeString(undefined, {
+                    hour: 'numeric',
+                    minute: '2-digit',
+                }),
+                count,
+            });
+        }
 
         return NextResponse.json({
             totalClicks: clicks.length,

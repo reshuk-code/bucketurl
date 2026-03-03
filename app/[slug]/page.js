@@ -1,39 +1,176 @@
-// app/[slug]/page.js - Short link redirect handler
+// app/[slug]/page.js - Short link redirect handler with bot detection
 import { adminDb, adminFirestore } from '@/lib/firebase-admin';
 import { headers } from 'next/headers';
+import { redirect } from 'next/navigation';
 import { UAParser } from 'ua-parser-js';
 
+// Social media bot user-agent patterns
+const BOT_PATTERNS = [
+    'facebookexternalhit',
+    'facebot',
+    'twitterbot',
+    'linkedinbot',
+    'slackbot',
+    'slack-imgproxy',
+    'telegrambot',
+    'whatsapp',
+    'discordbot',
+    'applebot',
+    'googlebot',
+    'bingbot',
+    'pinterest',
+    'vkshare',
+    'line-poker',
+    'iframely',
+    'embedly',
+    'outbrain',
+    'quora link preview',
+    'rogerbot',
+    'showyoubot',
+    'w3c_validator',
+    'semrushbot',
+    'ahrefsbot',
+    'msnbot',
+];
+
+function isBot(userAgent) {
+    if (!userAgent) return false;
+    const ua = userAgent.toLowerCase();
+    return BOT_PATTERNS.some((p) => ua.includes(p));
+}
+
+function getAppUrl() {
+    return process.env.NEXT_PUBLIC_APP_URL || 'https://bucketurl.app';
+}
+
+// generateMetadata is still needed for crawlers that respect Next.js meta
 export async function generateMetadata({ params }) {
     const { slug } = await params;
-    const snapshot = await adminDb.collection('links').where('shortCode', '==', slug).where('deleted', '==', false).limit(1).get();
+    const snapshot = await adminDb
+        .collection('links')
+        .where('shortCode', '==', slug)
+        .where('deleted', '==', false)
+        .limit(1)
+        .get();
 
     if (snapshot.empty) {
         return { title: 'Link Not Found — BucketURL' };
     }
 
     const link = snapshot.docs[0].data();
+    const appUrl = getAppUrl();
+    const defaultOgImage = `${appUrl}/og-default.png`;
+
     return {
         title: link.ogTitle || link.title || 'BucketURL Short Link',
         description: link.ogDescription || 'Shared via BucketURL — Professional URL Shortener',
         openGraph: {
             title: link.ogTitle || link.title || 'BucketURL Short Link',
             description: link.ogDescription || 'Shared via BucketURL',
-            images: link.ogImage ? [{ url: link.ogImage, width: 1200, height: 630 }] : [],
+            images: [
+                {
+                    url: link.ogImage || defaultOgImage,
+                    width: 1200,
+                    height: 630,
+                },
+            ],
             type: 'website',
+            url: `${appUrl}/${slug}`,
+            siteName: 'BucketURL',
         },
         twitter: {
             card: 'summary_large_image',
             title: link.ogTitle || link.title || 'BucketURL Short Link',
             description: link.ogDescription || 'Shared via BucketURL',
-            images: link.ogImage ? [link.ogImage] : [],
+            images: [link.ogImage || defaultOgImage],
+            site: '@bucketurl',
+        },
+        other: {
+            // Force overrides for platforms that sometimes ignore og: tags
+            'og:image': link.ogImage || defaultOgImage,
+            'og:image:width': '1200',
+            'og:image:height': '630',
+            'og:image:type': 'image/png',
         },
     };
 }
 
+// Server action for password-protected links (must be module-scope)
+async function unlockPasswordLink(formData) {
+    'use server';
+
+    const slug = formData.get('slug');
+    const pwd = formData.get('password');
+
+    if (!slug || !pwd) {
+        redirect(`/${slug}?error=1`);
+    }
+
+    const snapshot = await adminDb
+        .collection('links')
+        .where('shortCode', '==', slug)
+        .where('deleted', '==', false)
+        .limit(1)
+        .get();
+
+    if (snapshot.empty) {
+        redirect(`/${slug}?error=1`);
+    }
+
+    const doc = snapshot.docs[0];
+    const link = doc.data();
+    const linkId = doc.id;
+
+    if (pwd !== link.password) {
+        redirect(`/${slug}?error=1`);
+    }
+
+    // Track click then redirect
+    try {
+        const headersList = await headers();
+        const userAgent = headersList.get('user-agent') || '';
+        const ip = headersList.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+        const referer = headersList.get('referer') || 'Direct';
+        const parser = new UAParser(userAgent);
+
+        await Promise.all([
+            adminDb.collection('clicks').add({
+                linkId,
+                userId: link.userId,
+                shortCode: slug,
+                timestamp: new Date().toISOString(),
+                ip,
+                country:
+                    headersList.get('x-vercel-ip-country') ||
+                    headersList.get('cf-ipcountry') ||
+                    'Unknown',
+                device: parser.getDevice().type || 'Desktop',
+                browser: parser.getBrowser().name || 'Other',
+                os: parser.getOS().name || 'Other',
+                referrer: referer,
+            }),
+            adminDb.collection('links').doc(linkId).update({
+                totalClicks: adminFirestore.FieldValue.increment(1),
+            }),
+        ]);
+    } catch (e) {
+        console.error('Click tracking error (password link):', e);
+    }
+
+    redirect(link.originalUrl);
+}
+
 export default async function SlugPage({ params, searchParams }) {
     const { slug } = await params;
+    const sp = await searchParams;
+    const passwordError = sp?.error === '1';
 
-    const snapshot = await adminDb.collection('links')
+    const headersList = await headers();
+    const userAgent = headersList.get('user-agent') || '';
+    const botVisit = isBot(userAgent);
+
+    const snapshot = await adminDb
+        .collection('links')
         .where('shortCode', '==', slug)
         .where('deleted', '==', false)
         .limit(1)
@@ -44,8 +181,12 @@ export default async function SlugPage({ params, searchParams }) {
             <div className="min-h-screen flex items-center justify-center">
                 <div className="text-center">
                     <h1 className="text-2xl font-bold text-white mb-2">Link Not Found</h1>
-                    <p className="text-[var(--text-secondary)] mb-4">This short link doesn&apos;t exist or has been deleted.</p>
-                    <a href="/" className="text-white hover:text-[var(--text-secondary)]">Go to BucketURL</a>
+                    <p className="text-[var(--text-secondary)] mb-4">
+                        This short link doesn&apos;t exist or has been deleted.
+                    </p>
+                    <a href="/" className="text-white hover:text-[var(--text-secondary)]">
+                        Go to BucketURL
+                    </a>
                 </div>
             </div>
         );
@@ -54,6 +195,9 @@ export default async function SlugPage({ params, searchParams }) {
     const doc = snapshot.docs[0];
     const link = doc.data();
     const linkId = doc.id;
+    const appUrl = getAppUrl();
+    const defaultOgImage = `${appUrl}/og-default.png`;
+    const ogImage = link.ogImage || defaultOgImage;
 
     // Check expiry
     if (link.expiresAt && new Date(link.expiresAt) < new Date()) {
@@ -61,8 +205,12 @@ export default async function SlugPage({ params, searchParams }) {
             <div className="min-h-screen flex items-center justify-center">
                 <div className="text-center">
                     <h1 className="text-2xl font-bold text-white mb-2">Link Expired</h1>
-                    <p className="text-[var(--text-secondary)] mb-4">This link has expired and is no longer active.</p>
-                    <a href="/" className="text-white hover:text-[var(--text-secondary)]">Go to BucketURL</a>
+                    <p className="text-[var(--text-secondary)] mb-4">
+                        This link has expired and is no longer active.
+                    </p>
+                    <a href="/" className="text-white hover:text-[var(--text-secondary)]">
+                        Go to BucketURL
+                    </a>
                 </div>
             </div>
         );
@@ -70,101 +218,159 @@ export default async function SlugPage({ params, searchParams }) {
 
     // Password protection
     if (link.password) {
-        // Client-side password check handled below
-        return <PasswordProtectedPage link={link} linkId={linkId} slug={slug} />;
-    }
-
-    // Track click asynchronously (fire and forget)
-    const headersList = await headers();
-    const userAgent = headersList.get('user-agent') || '';
-    const ip = headersList.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
-    const referer = headersList.get('referer') || 'Direct';
-
-    // Fire-and-forget click recording
-    try {
-        const parser = new UAParser(userAgent);
-        const device = parser.getDevice().type || 'Desktop';
-        const browser = parser.getBrowser().name || 'Other';
-        const os = parser.getOS().name || 'Other';
-        const country = headersList.get('x-vercel-ip-country') || headersList.get('cf-ipcountry') || 'Unknown';
-
-        await Promise.all([
-            adminDb.collection('clicks').add({
-                linkId, userId: link.userId, shortCode: slug, timestamp: new Date().toISOString(),
-                ip, country, device, browser, os, referrer: referer,
-            }),
-            adminDb.collection('links').doc(linkId).update({
-                totalClicks: adminFirestore.FieldValue.increment(1)
-            })
-        ]);
-    } catch (e) {
-        // Don't fail redirect on click tracking error
-    }
-
-    // Return an HTML page that contains the OG tags and a meta refresh for redirection
-    // This ensures Facebook/Twitter/LinkedIn crawler bots see the metadata before redirecting
-    return (
-        <html lang="en">
-            <head>
-                <meta charSet="utf-8" />
-                <title>{link.ogTitle || link.title || 'BucketURL'}</title>
-                <meta name="description" content={link.ogDescription || 'Shared via BucketURL'} />
-
-                {/* OpenGraph */}
-                <meta property="og:title" content={link.ogTitle || link.title || 'BucketURL'} />
-                <meta property="og:description" content={link.ogDescription || 'Shared via BucketURL'} />
-                <meta property="og:type" content="website" />
-                {link.ogImage && <meta property="og:image" content={link.ogImage} />}
-
-                {/* Twitter */}
-                <meta name="twitter:card" content="summary_large_image" />
-                <meta name="twitter:title" content={link.ogTitle || link.title || 'BucketURL'} />
-                <meta name="twitter:description" content={link.ogDescription || 'Shared via BucketURL'} />
-                {link.ogImage && <meta name="twitter:image" content={link.ogImage} />}
-
-                {/* The Redirect */}
-                <meta httpEquiv="refresh" content={`0;url=${link.originalUrl}`} />
-                <link rel="canonical" href={link.originalUrl} />
-            </head>
-            <body style={{ backgroundColor: '#121212', color: '#fff', fontFamily: 'sans-serif', textAlign: 'center', padding: '2rem' }}>
-                <p>Redirecting to destination...</p>
-                <p style={{ fontSize: '0.8rem', color: '#a3a3a3' }}>If you are not redirected automatically, <a href={link.originalUrl} style={{ color: '#fff' }}>click here</a>.</p>
-                <script dangerouslySetInnerHTML={{ __html: `window.location.replace("${link.originalUrl}");` }} />
-            </body>
-        </html>
-    );
-}
-
-// Client component for password protection
-function PasswordProtectedPage({ link, linkId, slug }) {
-    return (
-        <div className="min-h-screen flex items-center justify-center px-4">
-            <div className="w-full max-w-sm text-center">
-                <div className="w-12 h-12 rounded-full border border-[var(--border)] bg-[var(--bg-card)] flex items-center justify-center mx-auto mb-5">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-white"><rect width="18" height="11" x="3" y="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
+        return (
+            <div className="min-h-screen flex items-center justify-center px-4">
+                <div className="w-full max-w-sm text-center">
+                    <div className="w-12 h-12 rounded-full border border-[var(--border)] bg-[var(--bg-card)] flex items-center justify-center mx-auto mb-5">
+                        <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            width="20"
+                            height="20"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            className="text-white"
+                        >
+                            <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
+                            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                        </svg>
+                    </div>
+                    <h1 className="text-xl font-bold text-white mb-2">Password Protected</h1>
+                    <p className="text-sm text-[var(--text-secondary)] mb-6">
+                        {link.title || 'This link'} is password protected.
+                    </p>
+                    <div className="card p-6">
+                        <p className="text-xs text-[var(--text-muted)] mb-4">
+                            Enter the password to access this link
+                        </p>
+                        {passwordError && (
+                            <p className="text-sm text-red-400 mb-3">
+                                Incorrect password. Please try again.
+                            </p>
+                        )}
+                        <form action={unlockPasswordLink}>
+                            <input type="hidden" name="slug" value={slug} />
+                            <input
+                                type="password"
+                                name="password"
+                                placeholder="Enter password"
+                                className="input-field mb-3"
+                                required
+                                autoFocus
+                            />
+                            <button type="submit" className="btn-primary w-full justify-center">
+                                Access Link
+                            </button>
+                        </form>
+                    </div>
                 </div>
-                <h1 className="text-xl font-bold text-white mb-2">Password Protected</h1>
-                <p className="text-sm text-[var(--text-secondary)] mb-6">{link.title || 'This link'} is password protected.</p>
-                <PasswordForm linkId={linkId} originalUrl={link.originalUrl} correctPassword={link.password} />
             </div>
-        </div>
-    );
-}
+        );
+    }
 
-function PasswordForm({ originalUrl, correctPassword }) {
-    // This is a server component, so we need a client-side form
-    // We'll use a simple HTML form with a POST action
+    // ── Track click (non-password, non-bot) ─────────────────────────────
+    if (!botVisit) {
+        const ip = headersList.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+        const referer = headersList.get('referer') || 'Direct';
+
+        try {
+            const parser = new UAParser(userAgent);
+            const device = parser.getDevice().type || 'Desktop';
+            const browser = parser.getBrowser().name || 'Other';
+            const os = parser.getOS().name || 'Other';
+            const country =
+                headersList.get('x-vercel-ip-country') ||
+                headersList.get('cf-ipcountry') ||
+                'Unknown';
+
+            await Promise.all([
+                adminDb.collection('clicks').add({
+                    linkId,
+                    userId: link.userId,
+                    shortCode: slug,
+                    timestamp: new Date().toISOString(),
+                    ip,
+                    country,
+                    device,
+                    browser,
+                    os,
+                    referrer: referer,
+                }),
+                adminDb.collection('links').doc(linkId).update({
+                    totalClicks: adminFirestore.FieldValue.increment(1),
+                }),
+            ]);
+        } catch (e) {
+            // Don't fail redirect on click tracking error
+        }
+    }
+
+    // ── Bot: serve rich preview page, NO redirect ────────────────────────
+    // Social crawlers (FB, Twitter, LinkedIn, Slack) will stop here and
+    // read our OG tags. Real users are redirected instantly via JS below.
+    const ogTitle = link.ogTitle || link.title || 'BucketURL Short Link';
+    const ogDescription = link.ogDescription || 'Shared via BucketURL — Professional URL Shortener';
+
     return (
-        <div className="card p-6">
-            <p className="text-xs text-[var(--text-muted)] mb-4">Enter the password to access this link</p>
-            <form action={async (formData) => {
-                'use server';
-                const pwd = formData.get('password');
-                if (pwd === correctPassword) redirect(originalUrl);
-            }}>
-                <input type="password" name="password" placeholder="Enter password" className="input-field mb-3" required autoFocus />
-                <button type="submit" className="btn-primary w-full justify-center">Access Link</button>
-            </form>
-        </div>
+        <>
+            {/* Inline OG meta tags as additional insurance — Next.js generateMetadata
+                handles these at the framework level, but some platforms parse the raw HTML
+                and these provide a secondary layer in case */}
+
+            {/* Instant JS redirect for real users */}
+            {!botVisit && (
+                <script
+                    dangerouslySetInnerHTML={{
+                        __html: `(function(){var d=document.referrer,r="${link.originalUrl.replace(/"/g, '\\"')}";window.location.replace(r);})();`,
+                    }}
+                />
+            )}
+
+            {/* Bot-facing preview page — also acts as fallback if JS is disabled */}
+            <div className="min-h-screen bg-[#0a0a0a] flex flex-col items-center justify-center px-6" style={{ fontFamily: '-apple-system, sans-serif' }}>
+                {/* OG card preview */}
+                {ogImage && (
+                    <div className="w-full max-w-lg mb-8 rounded-xl overflow-hidden border border-[#262626] shadow-2xl">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                            src={ogImage}
+                            alt={ogTitle}
+                            className="w-full object-cover"
+                            style={{ aspectRatio: '1200/630' }}
+                        />
+                        <div className="bg-[#111111] px-5 py-4 border-t border-[#262626]">
+                            <p className="text-[10px] font-bold text-[#525252] uppercase tracking-widest mb-1">
+                                {new URL(link.originalUrl).hostname}
+                            </p>
+                            <p className="text-sm font-bold text-white truncate">{ogTitle}</p>
+                            {ogDescription && (
+                                <p className="text-xs text-[#a3a3a3] mt-1 line-clamp-2">{ogDescription}</p>
+                            )}
+                        </div>
+                    </div>
+                )}
+
+                <div className="text-center">
+                    <p className="text-sm text-[#525252] mb-4">
+                        {botVisit ? 'Preview via BucketURL' : 'Redirecting you to the destination…'}
+                    </p>
+                    <a
+                        href={link.originalUrl}
+                        className="inline-flex items-center gap-2 bg-white text-black text-sm font-bold px-6 py-3 rounded-lg hover:bg-[#f0f0f0] transition-colors"
+                    >
+                        Continue to destination →
+                    </a>
+                    <p className="text-[10px] text-[#404040] mt-6">
+                        Shortened by{' '}
+                        <a href={appUrl} className="text-[#737373] hover:text-white transition-colors">
+                            BucketURL
+                        </a>
+                    </p>
+                </div>
+            </div>
+        </>
     );
 }

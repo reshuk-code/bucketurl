@@ -1,8 +1,6 @@
-// app/api/links/route.js - List and Create links
+// app/api/links/route.js - List & create links
 import { adminDb, adminAuth } from '@/lib/firebase-admin';
 import { NextResponse } from 'next/server';
-import { generateSlug } from '@/lib/utils';
-import { scrapeOgData } from '@/lib/scraper';
 
 async function getUidFromRequest(request) {
     const authHeader = request.headers.get('Authorization');
@@ -19,29 +17,44 @@ async function getUidFromRequest(request) {
 export async function GET(request) {
     try {
         const uid = await getUidFromRequest(request);
-        if (!uid) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        if (!uid) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
 
         const { searchParams } = new URL(request.url);
-        const search = searchParams.get('search') || '';
+        const search = (searchParams.get('search') || '').toLowerCase().trim();
 
-        let query = adminDb.collection('links')
-            .where('userId', '==', uid);
+        // Use a simple query that avoids requiring a composite Firestore index.
+        const snapshot = await adminDb
+            .collection('links')
+            .where('userId', '==', uid)
+            .get();
 
-        const snapshot = await query.get();
-        let links = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-        // Filter and sort in memory
-        links = links.filter(l => l.deleted === false);
-        links.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-        links = links.slice(0, 100);
+        let links = snapshot.docs
+            .map(doc => ({
+                id: doc.id,
+                ...doc.data(),
+            }))
+            // Filter out soft-deleted links and sort newest-first in memory
+            .filter(link => !link.deleted)
+            .sort((a, b) => {
+                const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+                const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+                return bTime - aTime;
+            });
 
         if (search) {
-            const s = search.toLowerCase();
-            links = links.filter(l =>
-                l.title?.toLowerCase().includes(s) ||
-                l.originalUrl?.toLowerCase().includes(s) ||
-                l.shortCode?.toLowerCase().includes(s)
-            );
+            links = links.filter(link => {
+                const haystack = [
+                    link.title,
+                    link.originalUrl,
+                    link.shortCode,
+                ]
+                    .filter(Boolean)
+                    .join(' ')
+                    .toLowerCase();
+                return haystack.includes(search);
+            });
         }
 
         return NextResponse.json({ links });
@@ -54,75 +67,99 @@ export async function GET(request) {
 export async function POST(request) {
     try {
         const uid = await getUidFromRequest(request);
-        if (!uid) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-        // Check plan limits
-        const userDoc = await adminDb.collection('users').doc(uid).get();
-        const userData = userDoc.data();
-        const plan = userData?.plan || 'free';
-
-        if (plan === 'free') {
-            const linkCount = await adminDb.collection('links')
-                .where('userId', '==', uid)
-                .where('deleted', '==', false)
-                .count()
-                .get();
-            if (linkCount.data().count >= 25) {
-                return NextResponse.json({ error: 'Free plan limit reached. Upgrade to Pro for unlimited links.' }, { status: 403 });
-            }
+        if (!uid) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
         const body = await request.json();
-        const { originalUrl, customSlug, title, ogTitle, ogDescription, ogImage, password, expiresAt, utmSource, utmMedium, utmCampaign, teamId } = body;
-
-        if (!originalUrl) return NextResponse.json({ error: 'originalUrl is required' }, { status: 400 });
-
-        // Generate or validate slug
-        let shortCode = customSlug?.trim().toLowerCase();
-        if (shortCode) {
-            if (plan === 'free') return NextResponse.json({ error: 'Custom slugs require Pro plan.' }, { status: 403 });
-            // Check uniqueness
-            const existing = await adminDb.collection('links').where('shortCode', '==', shortCode).get();
-            if (!existing.empty) return NextResponse.json({ error: 'That slug is already taken.' }, { status: 409 });
-        } else {
-            // Auto-generate unique slug
-            let attempts = 0;
-            do {
-                shortCode = generateSlug(6);
-                const check = await adminDb.collection('links').where('shortCode', '==', shortCode).get();
-                if (check.empty) break;
-                attempts++;
-            } while (attempts < 10);
-        }
-
-        // Scrape OG data if missing
-        let scrapedOg = {};
-        if (!ogTitle || !ogDescription || !ogImage) {
-            scrapedOg = (await scrapeOgData(originalUrl)) || {};
-        }
-
-        const linkData = {
-            shortCode,
+        const {
             originalUrl,
+            title = '',
+            customSlug = null,
+            password = null,
+            expiresAt = null,
+            ogTitle = '',
+            ogDescription = '',
+            ogImage = '',
+            utmSource = '',
+            utmMedium = '',
+            utmCampaign = '',
+        } = body || {};
+
+        if (!originalUrl) {
+            return NextResponse.json({ error: 'originalUrl is required' }, { status: 400 });
+        }
+
+        try {
+            // Basic URL validation
+            new URL(originalUrl);
+        } catch {
+            return NextResponse.json({ error: 'Invalid URL' }, { status: 400 });
+        }
+
+        let shortCode = customSlug;
+
+        if (shortCode) {
+            const existing = await adminDb
+                .collection('links')
+                .where('shortCode', '==', shortCode)
+                .where('deleted', '==', false)
+                .limit(1)
+                .get();
+
+            if (!existing.empty) {
+                return NextResponse.json({ error: 'This custom slug is already in use' }, { status: 400 });
+            }
+        } else {
+            // Generate a random short code
+            const alphabet = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+            const generateCode = (length = 7) =>
+                Array.from({ length }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join('');
+
+            // Try a few times to avoid collisions
+            // eslint-disable-next-line no-constant-condition
+            while (true) {
+                const candidate = generateCode();
+                const existing = await adminDb
+                    .collection('links')
+                    .where('shortCode', '==', candidate)
+                    .limit(1)
+                    .get();
+
+                if (existing.empty) {
+                    shortCode = candidate;
+                    break;
+                }
+            }
+        }
+
+        const now = new Date().toISOString();
+
+        const docData = {
             userId: uid,
-            teamId: teamId || null,
-            title: title || scrapedOg.ogTitle || new URL(originalUrl).hostname,
-            ogTitle: ogTitle || scrapedOg.ogTitle || null,
-            ogDescription: ogDescription || scrapedOg.ogDescription || null,
-            ogImage: ogImage || scrapedOg.ogImage || null,
-            password: password || null,
-            expiresAt: expiresAt || null,
-            utmSource: utmSource || null,
-            utmMedium: utmMedium || null,
-            utmCampaign: utmCampaign || null,
+            shortCode,
+            title,
+            originalUrl,
+            ogTitle,
+            ogDescription,
+            ogImage,
+            password,
+            expiresAt,
+            utmSource,
+            utmMedium,
+            utmCampaign,
             totalClicks: 0,
             deleted: false,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
+            createdAt: now,
+            updatedAt: now,
         };
 
-        const ref = await adminDb.collection('links').add(linkData);
-        return NextResponse.json({ link: { id: ref.id, ...linkData } }, { status: 201 });
+        const docRef = await adminDb.collection('links').add(docData);
+
+        return NextResponse.json(
+            { link: { id: docRef.id, ...docData } },
+            { status: 201 },
+        );
     } catch (error) {
         console.error('POST /api/links error:', error);
         return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
