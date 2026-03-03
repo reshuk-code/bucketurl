@@ -5,32 +5,73 @@ import { Toaster } from 'react-hot-toast';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
 
+const APP_URL = 'https://bucketurl.onrender.com';
+
 export const metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || 'https://bucketurl.app'),
-  title: 'BucketURL — Professional URL Shortener with Analytics',
-  description: 'Shorten URLs with powerful analytics, custom OpenGraph, team collaboration, and more. The professional link management platform.',
-  keywords: 'url shortener, link analytics, custom short links, team collaboration, openGraph',
+  metadataBase: new URL(APP_URL),
+  title: {
+    default: 'BucketURL — Free URL Shortener with Click Analytics & Custom Links',
+    template: '%s | BucketURL',
+  },
+  description:
+    'BucketURL is the fastest free URL shortener with real-time click analytics, custom short links, OpenGraph preview control, QR codes, and link expiration. Perfect for marketers, developers, and creators.',
+  keywords: [
+    'url shortener', 'free link shortener', 'short url', 'custom short link',
+    'link analytics', 'click tracking', 'branded short links', 'bitly alternative',
+    'tinyurl alternative', 'link management', 'qr code generator', 'open graph editor',
+    'link expiration', 'utm tracking', 'marketing links', 'shorten url free',
+    'link shortener with analytics', 'link in bio', 'social media links', 'url redirect',
+  ],
+  authors: [{ name: 'BucketURL', url: APP_URL }],
+  creator: 'BucketURL',
+  publisher: 'BucketURL',
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      'max-video-preview': -1,
+      'max-image-preview': 'large',
+      'max-snippet': -1,
+    },
+  },
   icons: {
     icon: '/logo.png',
     apple: '/logo.png',
+    shortcut: '/logo.png',
+  },
+  verification: {
+    google: 'googlef465c3c574bb843c',
+  },
+  alternates: {
+    canonical: APP_URL,
   },
   openGraph: {
-    title: 'BucketURL — Professional URL Shortener',
-    description: 'Powerful link management with real analytics, custom OpenGraph, and team collaboration.',
     type: 'website',
+    locale: 'en_US',
+    url: APP_URL,
+    siteName: 'BucketURL',
+    title: 'BucketURL — Free URL Shortener with Real-Time Analytics',
+    description:
+      'Shorten any URL in seconds. Get real-time click analytics, custom slugs, QR codes, and password protection — all free.',
     images: [
       {
         url: '/og-default.png',
         width: 1200,
         height: 630,
         alt: 'BucketURL — Shorten. Share. Track.',
+        type: 'image/png',
       },
     ],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'BucketURL — Professional URL Shortener',
-    description: 'Powerful link management with real analytics, custom OpenGraph, and team collaboration.',
+    site: '@bucketurl',
+    creator: '@bucketurl',
+    title: 'BucketURL — Free URL Shortener with Real-Time Analytics',
+    description:
+      'Shorten any URL in seconds. Get real-time click analytics, custom slugs, QR codes, and more — all free.',
     images: ['/og-default.png'],
   },
 };
