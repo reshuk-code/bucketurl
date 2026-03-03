@@ -114,8 +114,8 @@ export default function SettingsPage() {
                 {!isPro ? (
                     <div className="p-4 rounded-lg bg-[var(--bg)] border border-[var(--border)] text-center">
                         <Key size={20} className="mx-auto text-[var(--text-muted)] mb-3" />
-                        <p className="text-sm font-bold text-white mb-1">Developer API is a Pro Feature</p>
-                        <p className="text-xs font-medium text-[var(--text-secondary)] mb-4">Upgrade your plan to generate API keys and automate link creation.</p>
+                        <p className="text-sm font-bold text-white mb-1">Developer API is only available on Pro. Get it now →</p>
+                        <p className="text-xs font-medium text-[var(--text-secondary)] mb-4">Unlimited API access to automate your link generation workflow.</p>
                         <Link href="/dashboard/billing" className="btn-primary inline-flex h-9 px-4 text-xs">Upgrade Plan</Link>
                     </div>
                 ) : apiKey ? (

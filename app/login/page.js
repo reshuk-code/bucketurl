@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/auth/AuthProvider';
 import toast from 'react-hot-toast';
-import { Link2, Mail, Lock, Eye, EyeOff, Chrome, ArrowRight, Loader2 } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, Chrome, ArrowRight, Loader2 } from 'lucide-react';
 
 export default function LoginPage() {
     const { signIn, signInWithGoogle } = useAuth();
@@ -51,9 +51,7 @@ export default function LoginPage() {
                 {/* Logo */}
                 <div className="text-center mb-8">
                     <Link href="/" className="inline-flex items-center gap-2 mb-6">
-                        <div className="w-9 h-9 rounded-xl bg-violet-600 flex items-center justify-center">
-                            <Link2 size={18} className="text-white" />
-                        </div>
+                        <img src="/logo.png" alt="BucketURL" className="w-10 h-10 object-contain" />
                         <span className="text-xl font-bold text-white">BucketURL</span>
                     </Link>
                     <h1 className="text-2xl font-bold text-white mb-2">Welcome back</h1>

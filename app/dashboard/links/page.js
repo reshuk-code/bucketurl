@@ -2,10 +2,10 @@
 
 import { useEffect, useState, useCallback, Suspense } from 'react';
 import { useAuth } from '@/components/auth/AuthProvider';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import {
     Link2, Plus, Search, Copy, ExternalLink, Trash2, QrCode,
-    BarChart3, X, Loader2, Check, Lock, Clock, Tag, Globe, Settings, LockKeyhole
+    BarChart3, X, Loader2, Check, Lock, Clock, Tag, Globe, Settings, LockKeyhole, Zap
 } from 'lucide-react';
 import { formatNumber, buildShortUrl, formatDate, isValidUrl } from '@/lib/utils';
 import toast from 'react-hot-toast';
@@ -270,6 +270,7 @@ export default function LinksPage() {
 
 function LinksList() {
     const { user } = useAuth();
+    const router = useRouter();
     const searchParams = useSearchParams();
     const [links, setLinks] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -278,6 +279,7 @@ function LinksList() {
     const [qrLink, setQrLink] = useState(null);
     const [deleting, setDeleting] = useState(null);
     const [userPlan, setUserPlan] = useState('free');
+    const isPro = userPlan === 'pro' || userPlan === 'team';
 
     const fetchLinks = useCallback(async () => {
         if (!user) return;
@@ -405,8 +407,40 @@ function LinksList() {
                                 <button onClick={() => copyLink(link.shortCode)} className="p-2 rounded border border-transparent hover:border-[var(--border)] hover:bg-[var(--bg)] text-[var(--text-secondary)] hover:text-white transition-all flex items-center gap-1.5" title="Copy">
                                     <Copy size={13} /> <span className="text-xs font-bold hidden xl:block">Copy</span>
                                 </button>
-                                <button onClick={() => setQrLink(link)} className="p-2 rounded border border-transparent hover:border-[var(--border)] hover:bg-[var(--bg)] text-[var(--text-secondary)] hover:text-white transition-all" title="QR Code">
-                                    <QrCode size={13} />
+                                <button
+                                    onClick={() => isPro ? setQrLink(link) : toast((rt) => (
+                                        <div
+                                            onClick={() => {
+                                                toast.dismiss(rt.id);
+                                                router.push('/dashboard/billing');
+                                            }}
+                                            className="flex items-center gap-3 cursor-pointer"
+                                        >
+                                            <div className="w-8 h-8 rounded-full bg-amber-500/10 flex items-center justify-center flex-shrink-0 border border-amber-500/20">
+                                                <Zap size={16} className="text-amber-400 fill-amber-400" />
+                                            </div>
+                                            <div className="flex flex-col gap-0.5 text-left">
+                                                <p className="text-xs font-bold text-white tracking-tight">
+                                                    QR Codes are a Pro feature
+                                                </p>
+                                                <p className="text-[10px] text-amber-200/60 font-medium">
+                                                    Upgrade now to unlock QR analytics →
+                                                </p>
+                                            </div>
+                                        </div>
+                                    ), {
+                                        duration: 5000,
+                                        style: {
+                                            background: '#16161f',
+                                            border: '1px solid #ebad1a33',
+                                            padding: '12px',
+                                            borderRadius: '12px',
+                                        }
+                                    })}
+                                    className={`p-2 rounded border border-transparent hover:border-[var(--border)] transition-all ${isPro ? 'text-[var(--text-secondary)] hover:text-white' : 'text-[var(--text-secondary)] opacity-50'}`}
+                                    title={isPro ? 'QR Code' : 'QR Code (Pro)'}
+                                >
+                                    {isPro ? <QrCode size={13} /> : <Lock size={13} />}
                                 </button>
                                 <Link href={`/dashboard/links/${link.id}`} className="p-2 rounded border border-transparent hover:border-[var(--border)] hover:bg-[var(--bg)] text-[var(--text-secondary)] hover:text-white transition-all" title="Analytics">
                                     <BarChart3 size={13} />

@@ -13,7 +13,11 @@ import {
     Clock,
     CalendarIcon,
     Activity,
+    Zap,
+    Lock,
+    Sparkles,
 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { db } from '@/lib/firebase';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { formatNumber, buildShortUrl } from '@/lib/utils';
@@ -56,6 +60,7 @@ function resolveDays(filter) {
 
 export default function DashboardPage() {
     const { user } = useAuth();
+    const router = useRouter();
 
     const [links, setLinks] = useState([]);
     const [stats, setStats] = useState({ totalLinks: 0, totalClicks: 0, topLink: null });
@@ -69,6 +74,8 @@ export default function DashboardPage() {
     const [loadingStats, setLoadingStats] = useState(true);
     const [loadingChart, setLoadingChart] = useState(true);
     const [pulse, setPulse] = useState(false);
+    const [userPlan, setUserPlan] = useState('free');
+    const isPro = userPlan === 'pro' || userPlan === 'team';
 
     // Real-time stats listener (links + total clicks + top link)
     useEffect(() => {
@@ -97,17 +104,32 @@ export default function DashboardPage() {
         return () => unsubscribe();
     }, [user]);
 
+    // Fetch user plan once
+    useEffect(() => {
+        if (!user) return;
+        (async () => {
+            try {
+                const token = await user.getIdToken();
+                const res = await fetch('/api/users', { headers: { 'x-user-id': user.uid, Authorization: `Bearer ${token}` } });
+                const data = await res.json();
+                setUserPlan(data.user?.plan || 'free');
+            } catch { }
+        })();
+    }, [user]);
+
     // Fetch analytics for chart (aggregated or per-link) using real click data
     const fetchAnalyticsData = useCallback(async () => {
         if (!user) return;
         try {
             setLoadingChart(true);
             const token = await user.getIdToken();
-            const days = resolveDays(timeFilter);
+            // Free plan: always cap to 7 days
+            const isPlanPro = userPlan === 'pro' || userPlan === 'team';
+            const capDays = isPlanPro ? resolveDays(timeFilter) : Math.min(resolveDays(timeFilter), 7);
             const tzOffset = new Date().getTimezoneOffset(); // minutes offset from UTC
 
             if (selectedScope === 'all') {
-                const res = await fetch(`/api/analytics/all?days=${days}&tzOffset=${tzOffset}`, {
+                const res = await fetch(`/api/analytics/all?days=${capDays}&tzOffset=${tzOffset}`, {
                     headers: { Authorization: `Bearer ${token}` },
                 });
                 const data = await res.json();
@@ -123,9 +145,9 @@ export default function DashboardPage() {
                 setIndexRequired(data.indexRequired || false);
             } else {
                 const res = await fetch(
-                    `/api/analytics/${selectedScope}?days=${days}&tzOffset=${tzOffset}`,
+                    `/api/analytics/${selectedScope}?days=${capDays}&tzOffset=${tzOffset}`,
                     {
-                    headers: { Authorization: `Bearer ${token}` },
+                        headers: { Authorization: `Bearer ${token}` },
                     },
                 );
                 const data = await res.json();
@@ -197,8 +219,8 @@ export default function DashboardPage() {
         selectedScope === 'all'
             ? 'All links'
             : links.find((l) => l.id === selectedScope)?.title ||
-              links.find((l) => l.id === selectedScope)?.shortCode ||
-              'Selected link';
+            links.find((l) => l.id === selectedScope)?.shortCode ||
+            'Selected link';
 
     return (
         <div className="p-6 md:p-8 space-y-8 animate-fade-in max-w-6xl mx-auto">
@@ -248,9 +270,8 @@ export default function DashboardPage() {
                         </div>
                     </div>
                     <div
-                        className={`text-3xl font-semibold text-white mb-1 relative z-10 transition-transform duration-300 ${
-                            pulse ? 'scale-110' : 'scale-100'
-                        }`}
+                        className={`text-3xl font-semibold text-white mb-1 relative z-10 transition-transform duration-300 ${pulse ? 'scale-110' : 'scale-100'
+                            }`}
                     >
                         {formatNumber(stats.totalClicks)}
                     </div>
@@ -321,11 +342,10 @@ export default function DashboardPage() {
                                             setSelectedScope('all');
                                             setScopeOpen(false);
                                         }}
-                                        className={`w-full px-3 py-2 text-xs text-left hover:bg-white/5 flex items-center justify-between ${
-                                            selectedScope === 'all'
-                                                ? 'text-white'
-                                                : 'text-[var(--text-secondary)]'
-                                        }`}
+                                        className={`w-full px-3 py-2 text-xs text-left hover:bg-white/5 flex items-center justify-between ${selectedScope === 'all'
+                                            ? 'text-white'
+                                            : 'text-[var(--text-secondary)]'
+                                            }`}
                                     >
                                         <span>All links</span>
                                         {selectedScope === 'all' && (
@@ -343,11 +363,10 @@ export default function DashboardPage() {
                                                 setSelectedScope(l.id);
                                                 setScopeOpen(false);
                                             }}
-                                            className={`w-full px-3 py-2 text-xs text-left hover:bg-white/5 flex flex-col ${
-                                                selectedScope === l.id
-                                                    ? 'text-white'
-                                                    : 'text-[var(--text-secondary)]'
-                                            }`}
+                                            className={`w-full px-3 py-2 text-xs text-left hover:bg-white/5 flex flex-col ${selectedScope === l.id
+                                                ? 'text-white'
+                                                : 'text-[var(--text-secondary)]'
+                                                }`}
                                         >
                                             <span className="truncate">
                                                 {l.title || l.shortCode || 'Untitled link'}
@@ -364,19 +383,52 @@ export default function DashboardPage() {
                         {/* Time filter */}
                         <div className="flex p-0.5 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-md">
                             {[
-                                { val: 'live', label: 'Live', icon: Activity },
+                                { val: 'live', label: 'Live', icon: Activity, proOnly: true },
                                 { val: '3d', label: '3d' },
                                 { val: '15d', label: '15d' },
                                 { val: '30d', label: '30d' },
                             ].map((t) => (
                                 <button
                                     key={t.val}
-                                    onClick={() => setTimeFilter(t.val)}
-                                    className={`px-3 py-1.5 rounded text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-colors ${
-                                        timeFilter === t.val
-                                            ? 'bg-[var(--bg)] text-white shadow-sm border border-[var(--border)]'
-                                            : 'text-[var(--text-muted)] hover:text-white border border-transparent'
-                                    }`}
+                                    onClick={() => {
+                                        if (t.proOnly && !isPro) {
+                                            toast((rt) => (
+                                                <div
+                                                    onClick={() => {
+                                                        toast.dismiss(rt.id);
+                                                        router.push('/dashboard/billing');
+                                                    }}
+                                                    className="flex items-center gap-3 cursor-pointer"
+                                                >
+                                                    <div className="w-8 h-8 rounded-full bg-amber-500/10 flex items-center justify-center flex-shrink-0 border border-amber-500/20">
+                                                        <Zap size={16} className="text-amber-400 fill-amber-400" />
+                                                    </div>
+                                                    <div className="flex flex-col gap-0.5">
+                                                        <p className="text-xs font-bold text-white tracking-tight">
+                                                            Live analytics is a Pro feature
+                                                        </p>
+                                                        <p className="text-[10px] text-amber-200/60 font-medium">
+                                                            Upgrade now to unlock real-time tracking →
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            ), {
+                                                duration: 5000,
+                                                style: {
+                                                    background: '#16161f',
+                                                    border: '1px solid #ebad1a33',
+                                                    padding: '12px',
+                                                    borderRadius: '12px',
+                                                }
+                                            });
+                                            return;
+                                        }
+                                        setTimeFilter(t.val);
+                                    }}
+                                    className={`px-3 py-1.5 rounded text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-colors ${timeFilter === t.val
+                                        ? 'bg-[var(--bg)] text-white shadow-sm border border-[var(--border)]'
+                                        : 'text-[var(--text-muted)] hover:text-white border border-transparent'
+                                        }`}
                                 >
                                     {t.icon && (
                                         <t.icon
@@ -389,6 +441,7 @@ export default function DashboardPage() {
                                         />
                                     )}
                                     {t.label}
+                                    {t.proOnly && !isPro && <Lock size={9} className="text-[var(--text-muted)] opacity-70" />}
                                 </button>
                             ))}
                             <button

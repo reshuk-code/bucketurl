@@ -71,9 +71,7 @@ function SignUpForm() {
             <div className="relative w-full max-w-md">
                 <div className="text-center mb-8">
                     <Link href="/" className="inline-flex items-center gap-2 mb-6">
-                        <div className="w-9 h-9 rounded-xl bg-violet-600 flex items-center justify-center">
-                            <Link2 size={18} className="text-white" />
-                        </div>
+                        <img src="/logo.png" alt="BucketURL" className="w-10 h-10 object-contain" />
                         <span className="text-xl font-bold text-white">BucketURL</span>
                     </Link>
                     <h1 className="text-2xl font-bold text-white mb-2">

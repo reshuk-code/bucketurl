@@ -15,8 +15,17 @@ export async function GET(req) {
         const userId = decodedToken.uid;
 
         const { searchParams } = new URL(req.url);
-        const days = parseInt(searchParams.get('days') || '15', 10);
+        let days = parseInt(searchParams.get('days') || '15', 10);
         const tzOffset = parseInt(searchParams.get('tzOffset') || '0', 10); // minutes from getTimezoneOffset
+
+        const userDoc = await adminDb.collection('users').doc(userId).get();
+        const userData = userDoc.exists ? userDoc.data() : { plan: 'free' };
+        const isPro = userData.plan === 'pro' || userData.plan === 'team';
+
+        if (!isPro) {
+            days = Math.min(days, 7);
+            if (days === 1) days = 7; // Prevent 'live' access
+        }
 
         // Compute range in local time, then convert to UTC for querying Firestore
         const nowLocal = new Date(Date.now() - tzOffset * 60_000);

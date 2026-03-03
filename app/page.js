@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/auth/AuthProvider';
-import { BarChart3, Shield, Zap, Users, Globe, Lock, ArrowRight, Check, X as XIcon, Link2, ChevronRight, TrendingUp, Eye } from 'lucide-react';
+import { BarChart3, Shield, Zap, Users, Globe, Lock, ArrowRight, Check, X as XIcon, ChevronRight, TrendingUp, Eye } from 'lucide-react';
 
 const FEATURES = [
   { icon: BarChart3, title: 'Deep Analytics', desc: 'Track every click with device, geo, browser, referrer, and time data. Make data-driven decisions.' },
@@ -31,10 +31,10 @@ const PLANS = [
       { name: '25 short links', included: true },
       { name: '7-day analytics', included: true },
       { name: 'Basic click tracking', included: true },
-      { name: 'QR codes', included: true },
       { name: 'Unlimited links', included: false },
-      { name: 'Team collaboration', included: false },
-      { name: 'Custom OpenGraph', included: false },
+      { name: 'QR codes', included: false },
+      { name: 'Live analytics', included: false },
+      { name: 'Custom slugs', included: false },
     ],
     cta: 'Get Started Free',
     href: '/signup',
@@ -48,9 +48,9 @@ const PLANS = [
       { name: 'Unlimited short links', included: true },
       { name: '365-day analytics', included: true },
       { name: 'Advanced click tracking', included: true },
-      { name: 'QR codes', included: true },
-      { name: 'Custom slugs & OpenGraph', included: true },
-      { name: 'Team collaboration (up to 10)', included: true },
+      { name: 'QR codes & Live analytics', included: true },
+      { name: 'Custom slugs & OG', included: true },
+      { name: 'Team collaboration', included: true },
       { name: 'Password protection & API', included: true },
     ],
     cta: 'Start Pro Trial',
@@ -87,9 +87,7 @@ export default function LandingPage() {
       <nav className="fixed top-0 left-0 right-0 z-50 glass border-b border-[var(--border)]">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-md bg-white border border-white/20 flex items-center justify-center">
-              <Link2 size={16} className="text-black" />
-            </div>
+            <img src="/logo.png" alt="BucketURL" className="w-10 h-10 object-contain" />
             <span className="text-lg font-bold text-white tracking-tight">BucketURL</span>
           </Link>
 
@@ -176,9 +174,7 @@ export default function LandingPage() {
               {/* Sidebar */}
               <div className="w-56 border-r border-[var(--border)] p-4 hidden md:block bg-[var(--bg-secondary)]">
                 <div className="flex items-center gap-2.5 mb-8 px-2">
-                  <div className="w-6 h-6 rounded border border-[var(--border)] bg-black flex items-center justify-center">
-                    <Link2 size={12} className="text-white" />
-                  </div>
+                  <img src="/logo.png" alt="BucketURL" className="w-8 h-8 object-contain" />
                   <span className="text-sm font-bold text-white">BucketURL</span>
                 </div>
                 {['Dashboard', 'My Links', 'Analytics', 'Teams', 'Settings'].map((item, i) => (
@@ -376,9 +372,7 @@ export default function LandingPage() {
       <footer className="border-t border-[var(--border)] bg-[var(--bg-secondary)] py-12 px-6">
         <div className="max-w-5xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
           <div className="flex items-center gap-2.5">
-            <div className="w-6 h-6 rounded border border-[var(--border)] bg-black flex items-center justify-center">
-              <Link2 size={12} className="text-white" />
-            </div>
+            <img src="/logo.png" alt="BucketURL" className="w-8 h-8 object-contain" />
             <span className="text-sm font-bold text-white tracking-tight">BucketURL</span>
           </div>
           <p className="text-sm font-medium text-[var(--text-secondary)]">Built for professionals who take their links seriously.</p>

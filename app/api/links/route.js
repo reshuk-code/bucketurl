@@ -75,15 +75,18 @@ export async function POST(request) {
         const {
             originalUrl,
             title = '',
-            customSlug = null,
-            password = null,
-            expiresAt = null,
             ogTitle = '',
             ogDescription = '',
             ogImage = '',
             utmSource = '',
             utmMedium = '',
             utmCampaign = '',
+        } = body || {};
+
+        let {
+            customSlug = null,
+            password = null,
+            expiresAt = null,
         } = body || {};
 
         if (!originalUrl) {
@@ -98,6 +101,18 @@ export async function POST(request) {
         }
 
         let shortCode = customSlug;
+
+        // Fetch user plan and enforce rules
+        const userDoc = await adminDb.collection('users').doc(uid).get();
+        const userData = userDoc.exists ? userDoc.data() : { plan: 'free' };
+        const isPro = userData.plan === 'pro' || userData.plan === 'team';
+
+        if (!isPro) {
+            // Silently strip Pro features if free user tries to use them
+            shortCode = null;
+            password = null;
+            expiresAt = null;
+        }
 
         if (shortCode) {
             const existing = await adminDb

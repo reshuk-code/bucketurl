@@ -25,6 +25,12 @@ export const metadata = {
   authors: [{ name: 'BucketURL', url: APP_URL }],
   creator: 'BucketURL',
   publisher: 'BucketURL',
+  category: 'technology',
+  applicationName: 'BucketURL',
+  generator: 'Next.js',
+  referrer: 'origin-when-cross-origin',
+  colorScheme: 'dark',
+  themeColor: '#0a0a0f',
   robots: {
     index: true,
     follow: true,
@@ -37,7 +43,7 @@ export const metadata = {
     },
   },
   icons: {
-    icon: '/logo.png',
+    icon: [{ url: '/logo.png', type: 'image/png' }],
     apple: '/logo.png',
     shortcut: '/logo.png',
   },
@@ -76,12 +82,83 @@ export const metadata = {
   },
 };
 
+// JSON-LD structured data — WebApplication + WebSite + Organization
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': 'WebApplication',
+      '@id': `${APP_URL}/#webapp`,
+      name: 'BucketURL',
+      url: APP_URL,
+      description:
+        'Free URL shortener with real-time click analytics, custom slugs, QR codes, OpenGraph control, and link expiration.',
+      applicationCategory: 'UtilitiesApplication',
+      operatingSystem: 'Any',
+      browserRequirements: 'Requires JavaScript',
+      inLanguage: 'en-US',
+      offers: {
+        '@type': 'Offer',
+        price: '0',
+        priceCurrency: 'USD',
+        description: 'Free plan — 25 links, 7-day analytics. Pro plan from $9/mo.',
+      },
+      featureList: [
+        'URL shortening',
+        'Real-time click analytics',
+        'Custom short slugs',
+        'QR code generation',
+        'OpenGraph image control',
+        'Password-protected links',
+        'Link expiration',
+        'UTM parameter tracking',
+        'Device & country analytics',
+      ],
+      screenshot: `${APP_URL}/og-default.png`,
+      author: { '@id': `${APP_URL}/#organization` },
+    },
+    {
+      '@type': 'Organization',
+      '@id': `${APP_URL}/#organization`,
+      name: 'BucketURL',
+      url: APP_URL,
+      logo: {
+        '@type': 'ImageObject',
+        url: `${APP_URL}/logo.png`,
+        width: 512,
+        height: 512,
+      },
+      sameAs: ['https://twitter.com/bucketurl'],
+    },
+    {
+      '@type': 'WebSite',
+      '@id': `${APP_URL}/#website`,
+      url: APP_URL,
+      name: 'BucketURL',
+      description: 'Free URL shortener with real-time analytics',
+      publisher: { '@id': `${APP_URL}/#organization` },
+      potentialAction: {
+        '@type': 'SearchAction',
+        target: {
+          '@type': 'EntryPoint',
+          urlTemplate: `${APP_URL}/?q={search_term_string}`,
+        },
+        'query-input': 'required name=search_term_string',
+      },
+    },
+  ],
+};
+
 export default function RootLayout({ children }) {
   return (
     <html lang="en" className={inter.variable}>
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        />
       </head>
       <body className="antialiased" suppressHydrationWarning>
         <AuthProvider>

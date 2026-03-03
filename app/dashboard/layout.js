@@ -41,9 +41,7 @@ export default function DashboardLayout({ children }) {
         <div className="flex flex-col h-full">
             {/* Logo */}
             <div className="flex items-center gap-2.5 px-5 py-6 border-b border-[var(--border)]">
-                <div className="w-7 h-7 rounded border border-[var(--border-light)] bg-white/5 flex items-center justify-center flex-shrink-0">
-                    <Link2 size={14} className="text-white" />
-                </div>
+                <img src="/logo.png" alt="BucketURL" className="w-10 h-10 object-contain flex-shrink-0" />
                 <span className="text-sm font-bold text-white tracking-tight">BucketURL</span>
             </div>
 
@@ -131,7 +129,7 @@ export default function DashboardLayout({ children }) {
                         {mobileOpen ? <X size={20} /> : <Menu size={20} />}
                     </button>
                     <div className="flex items-center gap-2">
-                        <div className="w-6 h-6 rounded bg-violet-600" />
+                        <img src="/logo.png" alt="BucketURL" className="w-8 h-8 object-contain" />
                         <span className="font-semibold text-white text-sm">BucketURL</span>
                     </div>
                 </div>
