@@ -148,13 +148,23 @@ export async function POST(request) {
             }
         }
 
+        // Build final URL: append UTM params if provided
+        let finalUrl = originalUrl;
+        try {
+            const urlObj = new URL(originalUrl);
+            if (utmSource) urlObj.searchParams.set('utm_source', utmSource);
+            if (utmMedium) urlObj.searchParams.set('utm_medium', utmMedium);
+            if (utmCampaign) urlObj.searchParams.set('utm_campaign', utmCampaign);
+            finalUrl = urlObj.toString();
+        } catch { /* keep original if parsing fails */ }
+
         const now = new Date().toISOString();
 
         const docData = {
             userId: uid,
             shortCode,
             title,
-            originalUrl,
+            originalUrl: finalUrl,
             ogTitle,
             ogDescription,
             ogImage,

@@ -2,6 +2,61 @@
 import { adminDb, adminAuth } from '@/lib/firebase-admin';
 import { NextResponse } from 'next/server';
 
+// Map raw referrer URLs to clean human-readable source names
+function parseReferrerSource(referrer) {
+    if (!referrer || referrer === 'Direct' || referrer === '') return 'Direct';
+    try {
+        const url = new URL(referrer);
+        const host = url.hostname.replace(/^www\./, '').toLowerCase();
+        const knownSources = {
+            't.co': 'Twitter / X',
+            'x.com': 'Twitter / X',
+            'twitter.com': 'Twitter / X',
+            'facebook.com': 'Facebook',
+            'fb.com': 'Facebook',
+            'm.facebook.com': 'Facebook',
+            'l.facebook.com': 'Facebook',
+            'instagram.com': 'Instagram',
+            'l.instagram.com': 'Instagram',
+            'linkedin.com': 'LinkedIn',
+            'lnkd.in': 'LinkedIn',
+            'youtube.com': 'YouTube',
+            'youtu.be': 'YouTube',
+            'reddit.com': 'Reddit',
+            'old.reddit.com': 'Reddit',
+            'pinterest.com': 'Pinterest',
+            'pin.it': 'Pinterest',
+            'snapchat.com': 'Snapchat',
+            'tiktok.com': 'TikTok',
+            'whatsapp.com': 'WhatsApp',
+            'wa.me': 'WhatsApp',
+            'telegram.org': 'Telegram',
+            't.me': 'Telegram',
+            'discord.com': 'Discord',
+            'google.com': 'Google',
+            'google.co': 'Google',
+            'bing.com': 'Bing',
+            'yahoo.com': 'Yahoo',
+            'duckduckgo.com': 'DuckDuckGo',
+            'github.com': 'GitHub',
+            'notion.so': 'Notion',
+            'substack.com': 'Substack',
+            'medium.com': 'Medium',
+        };
+        // Check for known partial matches
+        for (const [domain, name] of Object.entries(knownSources)) {
+            if (host === domain || host.endsWith(`.${domain}`)) return name;
+        }
+        // Check if Google search from any country TLD (google.co.uk, google.fr etc.)
+        if (/google\.[a-z.]+/.test(host)) return 'Google';
+        return host; // fallback: show hostname
+    } catch {
+        return 'Direct';
+    }
+}
+
+
+
 async function getUidFromRequest(request) {
     const authHeader = request.headers.get('Authorization');
     if (!authHeader?.startsWith('Bearer ')) return null;
@@ -76,8 +131,9 @@ export async function GET(request, { params }) {
             const browser = click.browser || 'Unknown';
             byBrowser[browser] = (byBrowser[browser] || 0) + 1;
 
-            const referrer = click.referrer || 'Direct';
-            byReferrer[referrer] = (byReferrer[referrer] || 0) + 1;
+            const referrerRaw = click.referrer || 'Direct';
+            const source = parseReferrerSource(referrerRaw);
+            byReferrer[source] = (byReferrer[source] || 0) + 1;
         }
 
         // Build day-by-day array for the full range
@@ -93,7 +149,7 @@ export async function GET(request, { params }) {
         const deviceBreakdown = Object.entries(byDevice).map(([name, value]) => ({ name, value }));
         const osBreakdown = Object.entries(byOS).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([name, value]) => ({ name, value }));
         const browserBreakdown = Object.entries(byBrowser).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([name, value]) => ({ name, value }));
-        const topReferrers = Object.entries(byReferrer).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([referrer, count]) => ({ referrer, count }));
+        const topReferrers = Object.entries(byReferrer).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([source, count]) => ({ source, count }));
         // Build rolling 24h hourly series in local time
         const hourlyData = [];
         const endBaseLocal = new Date(nowLocal);

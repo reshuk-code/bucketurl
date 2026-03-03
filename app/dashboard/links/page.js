@@ -5,16 +5,29 @@ import { useAuth } from '@/components/auth/AuthProvider';
 import { useSearchParams, useRouter } from 'next/navigation';
 import {
     Link2, Plus, Search, Copy, ExternalLink, Trash2, QrCode,
-    BarChart3, X, Loader2, Check, Lock, Clock, Tag, Globe, Settings, LockKeyhole, Zap
+    BarChart3, X, Loader2, Check, Lock, Clock, Tag, Globe, Settings, LockKeyhole, Zap,
+    Download, TrendingUp
 } from 'lucide-react';
 import { formatNumber, buildShortUrl, formatDate, isValidUrl } from '@/lib/utils';
 import toast from 'react-hot-toast';
 import Link from 'next/link';
 import { QRCodeSVG } from 'qrcode.react';
 
+// UTM URL preview helper
+function buildUtmPreview(baseUrl, utmSource, utmMedium, utmCampaign) {
+    if (!baseUrl) return '';
+    try {
+        const url = new URL(baseUrl);
+        if (utmSource) url.searchParams.set('utm_source', utmSource);
+        if (utmMedium) url.searchParams.set('utm_medium', utmMedium);
+        if (utmCampaign) url.searchParams.set('utm_campaign', utmCampaign);
+        return url.toString();
+    } catch { return baseUrl; }
+}
+
 // CreateLinkModal Component
 function CreateLinkModal({ onClose, onCreated, user, userPlan }) {
-    const [step, setStep] = useState(1); // 1: URL, 2: Options, 3: OG
+    const [step, setStep] = useState(1); // 1: URL, 2: Options, 3: UTM, 4: OG
     const [saving, setSaving] = useState(false);
     const [expiryPreset, setExpiryPreset] = useState('always');
     const [form, setForm] = useState({
@@ -66,14 +79,14 @@ function CreateLinkModal({ onClose, onCreated, user, userPlan }) {
                 <div className="flex items-center justify-between p-5 border-b border-[var(--border)]">
                     <div>
                         <h2 className="text-sm font-bold text-white tracking-tight">Create Short Link</h2>
-                        <p className="text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider mt-1">Step {step} of 3</p>
+                        <p className="text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider mt-1">Step {step} of 4</p>
                     </div>
                     <button onClick={onClose} className="p-1.5 rounded-md hover:bg-[var(--bg)] border border-transparent hover:border-[var(--border)] transition-colors"><X size={16} className="text-white" /></button>
                 </div>
 
                 {/* Step Indicator */}
                 <div className="flex gap-1.5 px-5 pt-5 pb-2">
-                    {[1, 2, 3].map(s => (
+                    {[1, 2, 3, 4].map(s => (
                         <div key={s} className={`h-1.5 flex-1 rounded-full transition-all duration-300 ${s === step ? 'bg-white' : s < step ? 'bg-[#525252]' : 'bg-[#262626]'}`} />
                     ))}
                 </div>
@@ -172,8 +185,96 @@ function CreateLinkModal({ onClose, onCreated, user, userPlan }) {
                         </div>
                     )}
 
-                    {/* Step 3: OpenGraph */}
-                    {step === 3 && (
+                    {/* Step 3: UTM Builder */}
+                    {step === 3 && (() => {
+                        const utmPreview = buildUtmPreview(form.originalUrl, form.utmSource, form.utmMedium, form.utmCampaign);
+                        const hasParams = form.utmSource || form.utmMedium || form.utmCampaign;
+                        return (
+                            <div className="space-y-5 animate-in slide-in-from-right-4 duration-300">
+                                <p className="text-xs font-medium text-[var(--text-secondary)] bg-[var(--bg)] p-3 rounded border border-[var(--border)] border-l-2 border-l-white">
+                                    UTM parameters let you track exactly where your traffic comes from in Google Analytics or any analytics tool.
+                                </p>
+
+                                <div className="grid grid-cols-1 gap-4">
+                                    {/* UTM Source */}
+                                    <div>
+                                        <label className="block text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider mb-2">
+                                            UTM Source
+                                            <span className="ml-1 text-[var(--text-muted)] normal-case font-normal">— where is the traffic from?</span>
+                                        </label>
+                                        <input type="text" value={form.utmSource} onChange={e => set('utmSource', e.target.value.replace(/\s+/g, '_'))}
+                                            placeholder="e.g. twitter, newsletter, google"
+                                            className="input-field h-10" />
+                                    </div>
+
+                                    {/* UTM Medium */}
+                                    <div>
+                                        <label className="block text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider mb-2">
+                                            UTM Medium
+                                            <span className="ml-1 text-[var(--text-muted)] normal-case font-normal">— what type of channel?</span>
+                                        </label>
+                                        <div className="flex gap-2 mb-2">
+                                            {['social', 'email', 'cpc', 'organic'].map(m => (
+                                                <button key={m} onClick={() => set('utmMedium', m)}
+                                                    className={`px-2.5 py-1 rounded text-[10px] font-bold uppercase tracking-wider border transition-colors ${form.utmMedium === m ? 'bg-white text-black border-white' : 'bg-transparent text-[var(--text-muted)] border-[var(--border)] hover:text-white'
+                                                        }`}>
+                                                    {m}
+                                                </button>
+                                            ))}
+                                        </div>
+                                        <input type="text" value={form.utmMedium} onChange={e => set('utmMedium', e.target.value.replace(/\s+/g, '_'))}
+                                            placeholder="or type custom…"
+                                            className="input-field h-9 text-xs" />
+                                    </div>
+
+                                    {/* UTM Campaign */}
+                                    <div>
+                                        <label className="block text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider mb-2">
+                                            UTM Campaign
+                                            <span className="ml-1 text-[var(--text-muted)] normal-case font-normal">— what campaign?</span>
+                                        </label>
+                                        <input type="text" value={form.utmCampaign} onChange={e => set('utmCampaign', e.target.value.replace(/\s+/g, '_'))}
+                                            placeholder="e.g. spring_sale_2025, launch_week"
+                                            className="input-field h-10" />
+                                    </div>
+                                </div>
+
+                                {/* Live URL Preview */}
+                                {hasParams && (
+                                    <div className="mt-2">
+                                        <p className="text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                                            <TrendingUp size={10} /> Live URL Preview
+                                        </p>
+                                        <div className="bg-[var(--bg)] border border-[var(--border)] rounded-lg p-3 font-mono text-[10px] text-[var(--text-secondary)] break-all leading-relaxed">
+                                            {utmPreview.split('?').map((part, i) => (
+                                                i === 0
+                                                    ? <span key={i} className="text-white">{part}</span>
+                                                    : <span key={i}>
+                                                        <span className="text-[var(--text-muted)]">?</span>
+                                                        {part.split('&').map((param, j) => {
+                                                            const [key, val] = param.split('=');
+                                                            return <span key={j}>
+                                                                {j > 0 && <span className="text-[var(--text-muted)]">&amp;</span>}
+                                                                <span className="text-amber-400">{key}</span>
+                                                                <span className="text-[var(--text-muted)]">=</span>
+                                                                <span className="text-white">{val}</span>
+                                                            </span>;
+                                                        })}
+                                                    </span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {!hasParams && (
+                                    <p className="text-xs text-[var(--text-muted)] text-center py-4">Fill in at least one field above to see the tracked URL.</p>
+                                )}
+                            </div>
+                        );
+                    })()}
+
+                    {/* Step 4: OpenGraph */}
+                    {step === 4 && (
                         <div className="space-y-5 animate-in slide-in-from-right-4 duration-300">
                             <p className="text-xs font-medium text-[var(--text-secondary)] bg-[var(--bg)] p-3 rounded border border-[var(--border)] border-l-2 border-l-white">
                                 Control how this link looks when shared on social media like Twitter and LinkedIn.
@@ -213,7 +314,7 @@ function CreateLinkModal({ onClose, onCreated, user, userPlan }) {
                     <button onClick={() => step > 1 ? setStep(step - 1) : onClose()} className="btn-secondary h-10 px-4">
                         {step === 1 ? 'Cancel' : 'Back'}
                     </button>
-                    {step < 3 ? (
+                    {step < 4 ? (
                         <button onClick={() => setStep(step + 1)} disabled={step === 1 && !form.originalUrl} className="btn-primary h-10 px-6">
                             Next
                         </button>
@@ -317,6 +418,22 @@ function LinksList() {
         toast.success('Copied!');
     };
 
+    const handleExport = async () => {
+        try {
+            const token = await user.getIdToken();
+            const res = await fetch('/api/links/export', { headers: { Authorization: `Bearer ${token}` } });
+            if (!res.ok) { toast.error('Export failed'); return; }
+            const blob = await res.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `bucketurl-links-${new Date().toISOString().slice(0, 10)}.csv`;
+            a.click();
+            URL.revokeObjectURL(url);
+            toast.success('Exported successfully!');
+        } catch { toast.error('Export failed'); }
+    };
+
     if (loading) return (
         <div className="p-6 md:p-8 space-y-4 max-w-6xl mx-auto">
             <div className="skeleton h-10 w-full rounded-md mb-6" />
@@ -335,7 +452,14 @@ function LinksList() {
                     <h1 className="text-2xl font-bold text-white tracking-tight">My Links</h1>
                     <p className="text-sm font-medium text-[var(--text-secondary)] mt-1">{links.length} link{links.length !== 1 ? 's' : ''} total</p>
                 </div>
-                <button onClick={() => setShowCreate(true)} className="btn-primary h-9 px-4"><Plus size={15} /> New Link</button>
+                <div className="flex items-center gap-2">
+                    {links.length > 0 && (
+                        <button onClick={handleExport} className="btn-secondary h-9 px-3 text-xs" title="Export CSV">
+                            <Download size={14} /> <span className="hidden sm:inline">Export CSV</span>
+                        </button>
+                    )}
+                    <button onClick={() => setShowCreate(true)} className="btn-primary h-9 px-4"><Plus size={15} /> New Link</button>
+                </div>
             </div>
 
             {/* Search */}
