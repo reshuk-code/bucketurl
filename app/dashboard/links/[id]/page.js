@@ -488,6 +488,60 @@ export default function LinkDetailPage() {
 
             </div>
 
+            {/* ── UTM Analytics ── */}
+            <div className="grid md:grid-cols-3 gap-4">
+                {/* UTM Sources */}
+                <div className="card flex flex-col gap-4">
+                    <h3 className="text-xs font-bold text-white uppercase tracking-widest">UTM Sources</h3>
+                    {analytics?.topUtmSources?.length > 0 ? (
+                        <div className="space-y-4">
+                            {analytics.topUtmSources.map(({ name, count }) => (
+                                <ProgressRow key={name} label={name} value={count} total={analytics.totalClicks} abbr={name.slice(0, 2).toUpperCase()} />
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="flex-1 flex flex-col items-center justify-center py-6 text-center opacity-40">
+                            <AtSign size={20} className="mb-2" />
+                            <p className="text-[10px]">No UTM Sources</p>
+                        </div>
+                    )}
+                </div>
+
+                {/* UTM Mediums */}
+                <div className="card flex flex-col gap-4">
+                    <h3 className="text-xs font-bold text-white uppercase tracking-widest">UTM Mediums</h3>
+                    {analytics?.topUtmMediums?.length > 0 ? (
+                        <div className="space-y-4">
+                            {analytics.topUtmMediums.map(({ name, count }) => (
+                                <ProgressRow key={name} label={name} value={count} total={analytics.totalClicks} abbr={name.slice(0, 2).toUpperCase()} />
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="flex-1 flex flex-col items-center justify-center py-6 text-center opacity-40">
+                            <Send size={20} className="mb-2" />
+                            <p className="text-[10px]">No UTM Mediums</p>
+                        </div>
+                    )}
+                </div>
+
+                {/* UTM Campaigns */}
+                <div className="card flex flex-col gap-4">
+                    <h3 className="text-xs font-bold text-white uppercase tracking-widest">UTM Campaigns</h3>
+                    {analytics?.topUtmCampaigns?.length > 0 ? (
+                        <div className="space-y-4">
+                            {analytics.topUtmCampaigns.map(({ name, count }) => (
+                                <ProgressRow key={name} label={name} value={count} total={analytics.totalClicks} abbr={name.slice(0, 2).toUpperCase()} />
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="flex-1 flex flex-col items-center justify-center py-6 text-center opacity-40">
+                            <TrendingUp size={20} className="mb-2" />
+                            <p className="text-[10px]">No UTM Campaigns</p>
+                        </div>
+                    )}
+                </div>
+            </div>
+
             {/* ── Pro Analytics ── */}
             {isPro ? (
                 <div className="space-y-4">

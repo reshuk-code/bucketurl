@@ -110,6 +110,9 @@ export async function GET(request, { params }) {
         const byOS = {};
         const byBrowser = {};
         const byReferrer = {};
+        const byUtmSource = {};
+        const byUtmMedium = {};
+        const byUtmCampaign = {};
 
         for (const click of clicks) {
             const tsUtc = click.timestamp ? new Date(click.timestamp) : null;
@@ -134,6 +137,10 @@ export async function GET(request, { params }) {
             const referrerRaw = click.referrer || 'Direct';
             const source = parseReferrerSource(referrerRaw);
             byReferrer[source] = (byReferrer[source] || 0) + 1;
+
+            if (click.utmSource) byUtmSource[click.utmSource] = (byUtmSource[click.utmSource] || 0) + 1;
+            if (click.utmMedium) byUtmMedium[click.utmMedium] = (byUtmMedium[click.utmMedium] || 0) + 1;
+            if (click.utmCampaign) byUtmCampaign[click.utmCampaign] = (byUtmCampaign[click.utmCampaign] || 0) + 1;
         }
 
         // Build day-by-day array for the full range
@@ -150,6 +157,9 @@ export async function GET(request, { params }) {
         const osBreakdown = Object.entries(byOS).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([name, value]) => ({ name, value }));
         const browserBreakdown = Object.entries(byBrowser).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([name, value]) => ({ name, value }));
         const topReferrers = Object.entries(byReferrer).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([source, count]) => ({ source, count }));
+        const topUtmSources = Object.entries(byUtmSource).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([name, count]) => ({ name, count }));
+        const topUtmMediums = Object.entries(byUtmMedium).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([name, count]) => ({ name, count }));
+        const topUtmCampaigns = Object.entries(byUtmCampaign).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([name, count]) => ({ name, count }));
         // Build rolling 24h hourly series in local time
         const hourlyData = [];
         const endBaseLocal = new Date(nowLocal);
@@ -184,6 +194,9 @@ export async function GET(request, { params }) {
             osBreakdown,
             browserBreakdown,
             topReferrers,
+            topUtmSources,
+            topUtmMediums,
+            topUtmCampaigns,
             hourlyData,
         });
     } catch (error) {

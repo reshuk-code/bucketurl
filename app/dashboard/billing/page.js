@@ -113,16 +113,22 @@ export default function BillingPage() {
                 </div>
             </div>
 
-            {/* Billing Toggle */}
+            {/* Billing Toggle (Minimalist Sync) */}
             <div className="flex items-center justify-between mb-6">
                 <h2 className="text-base font-semibold text-white">Choose a Plan</h2>
-                <div className="inline-flex items-center gap-1 p-1 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)]">
-                    {['monthly', 'yearly'].map(b => (
-                        <button key={b} onClick={() => setBilling(b)}
-                            className={`px-3 py-1.5 rounded-md text-xs font-semibold capitalize transition-all ${billing === b ? 'bg-white text-black' : 'text-[var(--text-secondary)] hover:text-white'}`}>
-                            {b} {b === 'yearly' && <span className="text-[#a3a3a3] ml-1">-25%</span>}
-                        </button>
-                    ))}
+                <div className="inline-flex bg-black p-1 rounded-md border border-white/10">
+                    <button
+                        onClick={() => setBilling('monthly')}
+                        className={`px-4 py-1.5 rounded text-sm font-medium transition-colors ${billing === 'monthly' ? 'bg-white/10 text-white' : 'text-white/50 hover:text-white'}`}
+                    >
+                        Monthly
+                    </button>
+                    <button
+                        onClick={() => setBilling('yearly')}
+                        className={`px-4 py-1.5 rounded text-sm font-medium transition-colors ${billing === 'yearly' ? 'bg-white/10 text-white' : 'text-white/50 hover:text-white'}`}
+                    >
+                        Yearly <span className="ml-1 text-[10px] bg-green-500/10 text-green-400 px-1.5 py-0.5 rounded-full">-25%</span>
+                    </button>
                 </div>
             </div>
 
@@ -144,7 +150,7 @@ export default function BillingPage() {
                             <h3 className="text-lg font-bold text-white mb-1">{plan.name}</h3>
                             <p className="text-sm text-[var(--text-muted)] mb-5">{plan.desc}</p>
                             <div className="mb-6 flex items-baseline">
-                                <span className="text-4xl font-extrabold text-white">${plan.price[billing]}</span>
+                                <span className="text-4xl lg:text-5xl font-bold tracking-tighter text-white">${plan.price[billing]}</span>
                                 {plan.price[billing] > 0 && <span className="text-[var(--text-muted)] text-sm ml-1">/ mo</span>}
                             </div>
 

@@ -295,7 +295,7 @@ export default function DashboardPage() {
                                 {stats.topLink.title || 'Untitled Link'}
                             </div>
                             <p className="text-xs text-[var(--text-secondary)] truncate mb-1">
-                                bkt.url/{stats.topLink.shortCode}
+                                bucketurl.onrender.com/{stats.topLink.shortCode}
                             </p>
                             <div className="text-xs font-medium text-[var(--text-muted)]">
                                 {formatNumber(stats.topLink.totalClicks || 0)} clicks
@@ -372,7 +372,7 @@ export default function DashboardPage() {
                                                 {l.title || l.shortCode || 'Untitled link'}
                                             </span>
                                             <span className="text-[10px] text-[var(--text-muted)] truncate">
-                                                bkt.url/{l.shortCode}
+                                                bucketurl.onrender.com/{l.shortCode}
                                             </span>
                                         </button>
                                     ))}
@@ -566,7 +566,7 @@ export default function DashboardPage() {
                                         {link.title || 'Untitled Link'}
                                     </p>
                                     <p className="text-xs font-medium text-[var(--text-secondary)] truncate">
-                                        bkt.url/{link.shortCode}
+                                        bucketurl.onrender.com/{link.shortCode}
                                     </p>
                                 </div>
                                 <div className="text-right flex-shrink-0 pr-4">

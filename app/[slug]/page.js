@@ -40,7 +40,7 @@ function isBot(userAgent) {
 }
 
 function getAppUrl() {
-    return process.env.NEXT_PUBLIC_APP_URL || 'https://bucketurl.app';
+    return process.env.NEXT_PUBLIC_APP_URL || 'https://bucketurl.onrender.com';
 }
 
 // generateMetadata is still needed for crawlers that respect Next.js meta
@@ -60,6 +60,7 @@ export async function generateMetadata({ params }) {
     const link = snapshot.docs[0].data();
     const appUrl = getAppUrl();
     const defaultOgImage = `${appUrl}/og-default.png`;
+    const resolvedOgImage = link.ogImage?.trim() ? link.ogImage : defaultOgImage;
 
     return {
         title: link.ogTitle || link.title || 'BucketURL Short Link',
@@ -69,7 +70,7 @@ export async function generateMetadata({ params }) {
             description: link.ogDescription || 'Shared via BucketURL',
             images: [
                 {
-                    url: link.ogImage || defaultOgImage,
+                    url: resolvedOgImage,
                     width: 1200,
                     height: 630,
                 },
@@ -82,12 +83,12 @@ export async function generateMetadata({ params }) {
             card: 'summary_large_image',
             title: link.ogTitle || link.title || 'BucketURL Short Link',
             description: link.ogDescription || 'Shared via BucketURL',
-            images: [link.ogImage || defaultOgImage],
+            images: [resolvedOgImage],
             site: '@bucketurl',
         },
         other: {
             // Force overrides for platforms that sometimes ignore og: tags
-            'og:image': link.ogImage || defaultOgImage,
+            'og:image': resolvedOgImage,
             'og:image:width': '1200',
             'og:image:height': '630',
             'og:image:type': 'image/png',
@@ -148,6 +149,12 @@ async function unlockPasswordLink(formData) {
                 browser: parser.getBrowser().name || 'Other',
                 os: parser.getOS().name || 'Other',
                 referrer: referer,
+                // Capture dynamic UTMs if present in the redirect URL
+                utmSource: formData.get('utm_source') || null,
+                utmMedium: formData.get('utm_medium') || null,
+                utmCampaign: formData.get('utm_campaign') || null,
+                utmTerm: formData.get('utm_term') || null,
+                utmContent: formData.get('utm_content') || null,
             }),
             adminDb.collection('links').doc(linkId).update({
                 totalClicks: adminFirestore.FieldValue.increment(1),
@@ -197,7 +204,7 @@ export default async function SlugPage({ params, searchParams }) {
     const linkId = doc.id;
     const appUrl = getAppUrl();
     const defaultOgImage = `${appUrl}/og-default.png`;
-    const ogImage = link.ogImage || defaultOgImage;
+    const ogImage = link.ogImage?.trim() ? link.ogImage : defaultOgImage;
 
     // Check expiry
     if (link.expiresAt && new Date(link.expiresAt) < new Date()) {
@@ -253,6 +260,11 @@ export default async function SlugPage({ params, searchParams }) {
                         )}
                         <form action={unlockPasswordLink}>
                             <input type="hidden" name="slug" value={slug} />
+                            <input type="hidden" name="utm_source" value={sp?.utm_source || ''} />
+                            <input type="hidden" name="utm_medium" value={sp?.utm_medium || ''} />
+                            <input type="hidden" name="utm_campaign" value={sp?.utm_campaign || ''} />
+                            <input type="hidden" name="utm_term" value={sp?.utm_term || ''} />
+                            <input type="hidden" name="utm_content" value={sp?.utm_content || ''} />
                             <input
                                 type="password"
                                 name="password"
@@ -296,8 +308,13 @@ export default async function SlugPage({ params, searchParams }) {
                     country,
                     device,
                     browser,
-                    os,
+                    os: os,
                     referrer: referer,
+                    utmSource: sp?.utm_source || null,
+                    utmMedium: sp?.utm_medium || null,
+                    utmCampaign: sp?.utm_campaign || null,
+                    utmTerm: sp?.utm_term || null,
+                    utmContent: sp?.utm_content || null,
                 }),
                 adminDb.collection('links').doc(linkId).update({
                     totalClicks: adminFirestore.FieldValue.increment(1),

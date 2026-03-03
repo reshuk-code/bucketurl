@@ -6,7 +6,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import {
     Link2, Plus, Search, Copy, ExternalLink, Trash2, QrCode,
     BarChart3, X, Loader2, Check, Lock, Clock, Tag, Globe, Settings, LockKeyhole, Zap,
-    Download, TrendingUp
+    Download, TrendingUp, LayoutGrid, List
 } from 'lucide-react';
 import { formatNumber, buildShortUrl, formatDate, isValidUrl } from '@/lib/utils';
 import toast from 'react-hot-toast';
@@ -135,7 +135,7 @@ function CreateLinkModal({ onClose, onCreated, user, userPlan }) {
                                     <Tag size={12} /> Custom Slug
                                 </label>
                                 <div className="flex items-center gap-2">
-                                    <span className="text-sm font-bold text-[var(--text-muted)] flex-shrink-0">bkt.url/</span>
+                                    <span className="text-sm font-bold text-[var(--text-muted)] flex-shrink-0">bucketurl.onrender.com/</span>
                                     <input type="text" value={form.customSlug} onChange={e => set('customSlug', e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
                                         placeholder="my-custom-slug" className="input-field h-10" />
                                 </div>
@@ -297,9 +297,9 @@ function CreateLinkModal({ onClose, onCreated, user, userPlan }) {
                             {/* OG Preview */}
                             {(form.ogTitle || form.ogDescription || form.ogImage) && (
                                 <div className="rounded border border-[var(--border)] overflow-hidden mt-4 shadow-sm">
-                                    {form.ogImage ? <div className="h-32 bg-cover bg-center border-b border-[var(--border)]" style={{ backgroundImage: `url(${form.ogImage})` }} /> : <div className="h-32 bg-[var(--bg)] border-b border-[var(--border)] flex items-center justify-center text-[var(--text-muted)] text-[10px] uppercase font-bold tracking-widest">No Image</div>}
+                                    {form.ogImage ? <div className="h-32 bg-cover bg-center border-b border-[var(--border)]" style={{ backgroundImage: `url(${form.ogImage})` }} /> : <div className="h-32 bg-cover bg-center border-b border-[var(--border)]" style={{ backgroundImage: `url(/og-default.png)` }} />}
                                     <div className="p-3 bg-[var(--bg-secondary)]">
-                                        <p className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wider mb-1">bucketurl.app</p>
+                                        <p className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wider mb-1">bucketurl.onrender.com</p>
                                         <p className="text-sm font-bold text-white truncate">{form.ogTitle || 'Link Title'}</p>
                                         <p className="text-xs font-medium text-[var(--text-secondary)] mt-1 line-clamp-2">{form.ogDescription || 'No description provided'}</p>
                                     </div>
@@ -380,6 +380,7 @@ function LinksList() {
     const [qrLink, setQrLink] = useState(null);
     const [deleting, setDeleting] = useState(null);
     const [userPlan, setUserPlan] = useState('free');
+    const [viewMode, setViewMode] = useState('list'); // 'list' or 'grid'
     const isPro = userPlan === 'pro' || userPlan === 'team';
 
     const fetchLinks = useCallback(async () => {
@@ -447,12 +448,20 @@ function LinksList() {
             {qrLink && <QRModal link={qrLink} onClose={() => setQrLink(null)} />}
 
             {/* Header */}
-            <div className="flex items-center justify-between mb-8">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
                 <div>
                     <h1 className="text-2xl font-bold text-white tracking-tight">My Links</h1>
                     <p className="text-sm font-medium text-[var(--text-secondary)] mt-1">{links.length} link{links.length !== 1 ? 's' : ''} total</p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-3">
+                    <div className="hidden sm:flex items-center bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg p-1">
+                        <button onClick={() => setViewMode('list')} className={`p-1.5 rounded-md transition-colors ${viewMode === 'list' ? 'bg-[var(--bg)] text-white shadow-sm ring-1 ring-white/10' : 'text-[var(--text-muted)] hover:text-white'}`} title="List View">
+                            <List size={14} />
+                        </button>
+                        <button onClick={() => setViewMode('grid')} className={`p-1.5 rounded-md transition-colors ${viewMode === 'grid' ? 'bg-[var(--bg)] text-white shadow-sm ring-1 ring-white/10' : 'text-[var(--text-muted)] hover:text-white'}`} title="Grid View">
+                            <LayoutGrid size={14} />
+                        </button>
+                    </div>
                     {links.length > 0 && (
                         <button onClick={handleExport} className="btn-secondary h-9 px-3 text-xs" title="Export CSV">
                             <Download size={14} /> <span className="hidden sm:inline">Export CSV</span>
@@ -489,92 +498,126 @@ function LinksList() {
                     )}
                 </div>
             ) : (
-                <div className="space-y-3">
-                    {links.map(link => (
-                        <div key={link.id} className="card flex items-center gap-4 hover:border-white transition-colors p-4 group border border-[var(--border)] bg-[var(--bg-secondary)]">
-                            {/* Icon */}
-                            <div className="w-10 h-10 rounded border border-[var(--border)] bg-[var(--bg)] flex items-center justify-center flex-shrink-0">
-                                <Link2 size={16} className="text-white" />
-                            </div>
+                <div className={viewMode === 'list' ? "space-y-3" : "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5"}>
+                    {links.map(link => {
+                        const ogImg = link.ogImage || '/og-default.png';
 
-                            {/* Info */}
-                            <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 mb-1">
-                                    <p className="text-sm font-bold text-white truncate">{link.title || 'Untitled Link'}</p>
-                                    {link.password && <Lock size={12} className="text-[var(--text-secondary)] flex-shrink-0" title="Password Protected" />}
-                                    {link.expiresAt && <Clock size={12} className="text-[var(--text-secondary)] flex-shrink-0" title="Expires" />}
-                                </div>
-                                <div className="flex items-center gap-3">
-                                    <a href={buildShortUrl(link.shortCode)} target="_blank" rel="noreferrer"
-                                        className="text-xs font-bold text-white hover:text-[#d4d4d4] transition-colors flex items-center gap-1">
-                                        bkt.url/{link.shortCode} <ExternalLink size={10} />
-                                    </a>
-                                    <span className="text-[var(--text-muted)] text-[10px]">•</span>
-                                    <p className="text-xs font-medium text-[var(--text-muted)] truncate">{link.originalUrl}</p>
-                                </div>
-                            </div>
-
-                            {/* Stats */}
-                            <div className="text-right flex-shrink-0 hidden sm:block pr-4 border-r border-[var(--border)]">
-                                <p className="text-base font-bold text-white">{formatNumber(link.totalClicks || 0)}</p>
-                                <p className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wider">clicks</p>
-                            </div>
-
-                            {/* Date */}
-                            <div className="text-right flex-shrink-0 hidden lg:block pr-4">
-                                <p className="text-xs font-bold text-[var(--text-secondary)]">{formatDate(link.createdAt)}</p>
-                                <p className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wider mt-0.5">Created</p>
-                            </div>
-
-                            {/* Actions */}
-                            <div className="flex items-center gap-1.5 flex-shrink-0 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity ml-2">
-                                <button onClick={() => copyLink(link.shortCode)} className="p-2 rounded border border-transparent hover:border-[var(--border)] hover:bg-[var(--bg)] text-[var(--text-secondary)] hover:text-white transition-all flex items-center gap-1.5" title="Copy">
-                                    <Copy size={13} /> <span className="text-xs font-bold hidden xl:block">Copy</span>
-                                </button>
-                                <button
-                                    onClick={() => isPro ? setQrLink(link) : toast((rt) => (
-                                        <div
-                                            onClick={() => {
-                                                toast.dismiss(rt.id);
-                                                router.push('/dashboard/billing');
-                                            }}
-                                            className="flex items-center gap-3 cursor-pointer"
-                                        >
-                                            <div className="w-8 h-8 rounded-full bg-amber-500/10 flex items-center justify-center flex-shrink-0 border border-amber-500/20">
-                                                <Zap size={16} className="text-amber-400 fill-amber-400" />
+                        // GRID VIEW (Card format with large image)
+                        if (viewMode === 'grid') {
+                            return (
+                                <div key={link.id} className="card flex flex-col hover:border-white transition-colors group overflow-hidden border border-[var(--border)] bg-[var(--bg-secondary)] relative shadow-sm">
+                                    <div className="h-36 w-full bg-[#111] bg-cover bg-center border-b border-[var(--border)] relative group-hover:opacity-90 transition-opacity" style={{ backgroundImage: `url(${ogImg})` }}>
+                                        <div className="absolute top-2 right-2 flex gap-1 z-10">
+                                            {link.password && <div className="bg-black/80 backdrop-blur-sm px-2 py-1 rounded text-[10px] text-white flex items-center gap-1 border border-white/10"><Lock size={10} /> Protected</div>}
+                                            {link.expiresAt && <div className="bg-black/80 backdrop-blur-sm px-2 py-1 rounded text-[10px] text-white flex items-center gap-1 border border-white/10"><Clock size={10} /> Expires</div>}
+                                        </div>
+                                    </div>
+                                    <div className="p-4 flex-1 flex flex-col">
+                                        <div className="mb-4">
+                                            <h3 className="text-sm font-bold text-white line-clamp-1 mb-1" title={link.title || 'Untitled Link'}>{link.title || 'Untitled Link'}</h3>
+                                            <a href={buildShortUrl(link.shortCode)} target="_blank" rel="noreferrer" className="text-xs font-bold text-white hover:text-[#d4d4d4] transition-colors flex items-center gap-1 w-max">
+                                                bucketurl.onrender.com/{link.shortCode} <ExternalLink size={10} />
+                                            </a>
+                                            <p className="text-[10px] font-medium text-[var(--text-muted)] mt-1.5 truncate">{link.originalUrl}</p>
+                                        </div>
+                                        <div className="mt-auto flex items-center justify-between pt-4 border-t border-[var(--border)]">
+                                            <div>
+                                                <p className="text-base font-bold text-white leading-none">{formatNumber(link.totalClicks || 0)}</p>
+                                                <p className="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-wider mt-0.5">clicks</p>
                                             </div>
-                                            <div className="flex flex-col gap-0.5 text-left">
-                                                <p className="text-xs font-bold text-white tracking-tight">
-                                                    QR Codes are a Pro feature
-                                                </p>
-                                                <p className="text-[10px] text-amber-200/60 font-medium">
-                                                    Upgrade now to unlock QR analytics →
-                                                </p>
+                                            <div className="flex items-center gap-1 -mr-1">
+                                                <button onClick={() => copyLink(link.shortCode)} className="p-2 rounded-md hover:bg-[var(--bg)] text-[var(--text-muted)] hover:text-white transition-all"><Copy size={14} /></button>
+                                                <Link href={`/dashboard/links/${link.id}`} className="p-2 rounded-md hover:bg-[var(--bg)] text-[var(--text-muted)] hover:text-white transition-all"><BarChart3 size={14} /></Link>
+                                                <button onClick={() => handleDelete(link.id)} disabled={deleting === link.id} className="p-2 rounded-md hover:bg-red-500/10 text-[var(--text-muted)] hover:text-red-400 transition-all">
+                                                    {deleting === link.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                                                </button>
                                             </div>
                                         </div>
-                                    ), {
-                                        duration: 5000,
-                                        style: {
-                                            background: '#16161f',
-                                            border: '1px solid #ebad1a33',
-                                            padding: '12px',
-                                            borderRadius: '12px',
-                                        }
-                                    })}
-                                    className={`p-2 rounded border border-transparent hover:border-[var(--border)] transition-all ${isPro ? 'text-[var(--text-secondary)] hover:text-white' : 'text-[var(--text-secondary)] opacity-50'}`}
-                                    title={isPro ? 'QR Code' : 'QR Code (Pro)'}
-                                >
-                                    {isPro ? <QrCode size={13} /> : <Lock size={13} />}
-                                </button>
-                                <Link href={`/dashboard/links/${link.id}`} className="p-2 rounded border border-transparent hover:border-[var(--border)] hover:bg-[var(--bg)] text-[var(--text-secondary)] hover:text-white transition-all" title="Analytics">
-                                    <BarChart3 size={13} />
-                                </Link>
-                                <button onClick={() => handleDelete(link.id)} disabled={deleting === link.id} className="p-2 rounded border border-transparent hover:border-red-500/30 hover:bg-red-500/5 text-[var(--text-secondary)] hover:text-red-400 transition-all" title="Delete">
-                                    {deleting === link.id ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
-                                </button>
+                                    </div>
+                                </div>
+                            );
+                        }
+
+                        // LIST VIEW (Row format with OG thumbnail)
+                        return (
+                            <div key={link.id} className="card flex flex-col sm:flex-row sm:items-center gap-4 hover:border-white transition-colors p-4 group border border-[var(--border)] bg-[var(--bg-secondary)] relative">
+                                {/* Thumbnail */}
+                                <div className="w-12 h-12 rounded bg-[#111] bg-cover bg-center border border-[var(--border)] flex-shrink-0" title="OpenGraph Image" style={{ backgroundImage: `url(${ogImg})` }} />
+
+                                {/* Info */}
+                                <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <p className="text-sm font-bold text-white truncate max-w-[200px] sm:max-w-xs">{link.title || 'Untitled Link'}</p>
+                                        {link.password && <Lock size={12} className="text-[var(--text-secondary)] flex-shrink-0" title="Password Protected" />}
+                                        {link.expiresAt && <Clock size={12} className="text-[var(--text-secondary)] flex-shrink-0" title="Expires" />}
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                        <a href={buildShortUrl(link.shortCode)} target="_blank" rel="noreferrer"
+                                            className="text-xs font-bold text-white hover:text-[#d4d4d4] transition-colors flex items-center gap-1">
+                                            bucketurl.onrender.com/{link.shortCode} <ExternalLink size={10} />
+                                        </a>
+                                        <span className="text-[var(--text-muted)] text-[10px] hidden sm:block">•</span>
+                                        <p className="text-xs font-medium text-[var(--text-muted)] truncate hidden sm:block max-w-[150px] lg:max-w-xs">{link.originalUrl}</p>
+                                    </div>
+                                </div>
+
+                                {/* Stats */}
+                                <div className="text-left sm:text-right flex-shrink-0 sm:pr-4 sm:border-r border-[var(--border)] mt-2 sm:mt-0 flex sm:block items-center justify-between">
+                                    <div>
+                                        <p className="text-base font-bold text-white inline sm:block">{formatNumber(link.totalClicks || 0)}</p>
+                                        <p className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wider inline sm:block sm:mt-0.5 ml-1 sm:ml-0">clicks</p>
+                                    </div>
+                                    <p className="text-xs text-[var(--text-muted)] truncate sm:hidden block max-w-[150px]">{link.originalUrl}</p>
+                                </div>
+
+                                {/* Date */}
+                                <div className="text-right flex-shrink-0 hidden lg:block pr-4">
+                                    <p className="text-xs font-bold text-[var(--text-secondary)]">{formatDate(link.createdAt)}</p>
+                                    <p className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wider mt-0.5">Created</p>
+                                </div>
+
+                                {/* Actions */}
+                                <div className="flex items-center gap-1.5 flex-shrink-0 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity mt-3 sm:mt-0 sm:ml-2 border-t border-[var(--border)] sm:border-none pt-3 sm:pt-0">
+                                    <button onClick={() => copyLink(link.shortCode)} className="p-2 rounded border border-transparent hover:border-[var(--border)] hover:bg-[var(--bg)] text-[var(--text-secondary)] hover:text-white transition-all flex items-center gap-1.5" title="Copy">
+                                        <Copy size={13} /> <span className="text-xs font-bold hidden xl:block">Copy</span>
+                                    </button>
+                                    <button
+                                        onClick={() => isPro ? setQrLink(link) : toast((rt) => (
+                                            <div
+                                                onClick={() => {
+                                                    toast.dismiss(rt.id);
+                                                    router.push('/dashboard/billing');
+                                                }}
+                                                className="flex items-center gap-3 cursor-pointer"
+                                            >
+                                                <div className="w-8 h-8 rounded-full bg-amber-500/10 flex items-center justify-center flex-shrink-0 border border-amber-500/20">
+                                                    <Zap size={16} className="text-amber-400 fill-amber-400" />
+                                                </div>
+                                                <div className="flex flex-col gap-0.5 text-left">
+                                                    <p className="text-xs font-bold text-white tracking-tight">
+                                                        QR Codes are a Pro feature
+                                                    </p>
+                                                    <p className="text-[10px] text-amber-200/60 font-medium">
+                                                        Upgrade now to unlock QR analytics →
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        ), { duration: 5000, style: { background: '#16161f', border: '1px solid #ebad1a33', padding: '12px', borderRadius: '12px', } })}
+                                        className={`p-2 rounded border border-transparent hover:border-[var(--border)] transition-all ${isPro ? 'text-[var(--text-secondary)] hover:text-white' : 'text-[var(--text-secondary)] opacity-50'}`}
+                                        title={isPro ? 'QR Code' : 'QR Code (Pro)'}
+                                    >
+                                        {isPro ? <QrCode size={13} /> : <Lock size={13} />}
+                                    </button>
+                                    <Link href={`/dashboard/links/${link.id}`} className="p-2 rounded border border-transparent hover:border-[var(--border)] hover:bg-[var(--bg)] text-[var(--text-secondary)] hover:text-white transition-all" title="Analytics">
+                                        <BarChart3 size={13} />
+                                    </Link>
+                                    <button onClick={() => handleDelete(link.id)} disabled={deleting === link.id} className="p-2 rounded border border-transparent hover:border-red-500/30 hover:bg-red-500/5 text-[var(--text-secondary)] hover:text-red-400 transition-all" title="Delete">
+                                        {deleting === link.id ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                                    </button>
+                                </div>
                             </div>
-                        </div>
-                    ))}
+                        );
+                    })}
                 </div>
             )}
         </div>
