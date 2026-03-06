@@ -6,8 +6,13 @@ export default function robots() {
         rules: [
             {
                 userAgent: '*',
-                allow: '/',
-                disallow: ['/dashboard/', '/api/'],
+                allow: ['/', '/signup', '/login'],
+                disallow: ['/dashboard/', '/api/', '/_next/'],
+            },
+            {
+                // Block AI training crawlers
+                userAgent: ['GPTBot', 'Google-Extended', 'CCBot', 'anthropic-ai'],
+                disallow: ['/'],
             },
         ],
         sitemap: `${APP_URL}/sitemap.xml`,
