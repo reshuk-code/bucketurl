@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { useParams, useRouter } from 'next/navigation';
 import {
@@ -30,26 +30,102 @@ const ChartTooltip = ({ active, payload, label }) => {
     return null;
 };
 
-// Clean text abbreviations for traffic sources — NO emojis
+// Abbreviations for referrer sources
 const SOURCE_LABELS = {
-    'Twitter / X': 'X',
-    'Facebook': 'Fb',
-    'Instagram': 'Ig',
-    'LinkedIn': 'Li',
-    'YouTube': 'Yt',
-    'Reddit': 'Rd',
-    'WhatsApp': 'Wa',
-    'Telegram': 'Tg',
-    'Google': 'G',
-    'Direct': '—',
-    'TikTok': 'Tk',
-    'Discord': 'Dc',
-    'Bing': 'Bg',
-    'DuckDuckGo': 'Dk',
-    'GitHub': 'Gh',
+    'Twitter / X': 'X', 'Facebook': 'Fb', 'Instagram': 'Ig', 'LinkedIn': 'Li',
+    'YouTube': 'Yt', 'Reddit': 'Rd', 'WhatsApp': 'Wa', 'Telegram': 'Tg',
+    'Google': 'G', 'Direct': '—', 'TikTok': 'Tk', 'Discord': 'Dc',
+    'Bing': 'Bg', 'DuckDuckGo': 'Dk', 'GitHub': 'Gh',
+};
+
+// Abbreviations for browsers
+const BROWSER_ABBR = {
+    'Chrome': 'Ch', 'Firefox': 'Ff', 'Safari': 'Sf', 'Edge': 'Ed',
+    'Opera': 'Op', 'Samsung Browser': 'Sm', 'IE': 'IE', 'Other': '?',
+    'Mobile Chrome': 'Ch', 'Mobile Safari': 'Sf',
+};
+
+// Abbreviations for OS
+const OS_ABBR = {
+    'Windows': 'Win', 'macOS': 'Mac', 'Android': 'And', 'iOS': 'iOS',
+    'Linux': 'Lnx', 'Chrome OS': 'CrOS', 'Other': '?',
+};
+
+// UTM medium labels — map raw values to readable labels
+const UTM_MEDIUM_LABELS = {
+    'cpc': 'CPC / Paid', 'ppc': 'PPC / Paid', 'email': 'Email',
+    'social': 'Social', 'organic': 'Organic', 'referral': 'Referral',
+    'display': 'Display', 'affiliate': 'Affiliate', 'banner': 'Banner',
+    'push': 'Push', 'sms': 'SMS',
 };
 
 const DEVICE_ICONS = { Mobile: Smartphone, Desktop: Monitor, Tablet };
+
+// Full ISO alpha-2 code → country name map (handles old clicks stored as codes)
+const ISO_TO_NAME = {
+    AF:'Afghanistan',AL:'Albania',DZ:'Algeria',AD:'Andorra',AO:'Angola',AG:'Antigua and Barbuda',
+    AR:'Argentina',AM:'Armenia',AU:'Australia',AT:'Austria',AZ:'Azerbaijan',BS:'Bahamas',
+    BH:'Bahrain',BD:'Bangladesh',BB:'Barbados',BY:'Belarus',BE:'Belgium',BZ:'Belize',
+    BJ:'Benin',BT:'Bhutan',BO:'Bolivia',BA:'Bosnia and Herzegovina',BW:'Botswana',BR:'Brazil',
+    BN:'Brunei',BG:'Bulgaria',BF:'Burkina Faso',BI:'Burundi',CV:'Cabo Verde',KH:'Cambodia',
+    CM:'Cameroon',CA:'Canada',CF:'Central African Republic',TD:'Chad',CL:'Chile',CN:'China',
+    CO:'Colombia',KM:'Comoros',CD:'Congo (DRC)',CG:'Congo',CR:'Costa Rica',HR:'Croatia',
+    CU:'Cuba',CY:'Cyprus',CZ:'Czech Republic',DK:'Denmark',DJ:'Djibouti',DM:'Dominica',
+    DO:'Dominican Republic',EC:'Ecuador',EG:'Egypt',SV:'El Salvador',GQ:'Equatorial Guinea',
+    ER:'Eritrea',EE:'Estonia',SZ:'Eswatini',ET:'Ethiopia',FJ:'Fiji',FI:'Finland',FR:'France',
+    GA:'Gabon',GM:'Gambia',GE:'Georgia',DE:'Germany',GH:'Ghana',GR:'Greece',GD:'Grenada',
+    GT:'Guatemala',GN:'Guinea',GW:'Guinea-Bissau',GY:'Guyana',HT:'Haiti',HN:'Honduras',
+    HU:'Hungary',IS:'Iceland',IN:'India',ID:'Indonesia',IR:'Iran',IQ:'Iraq',IE:'Ireland',
+    IL:'Israel',IT:'Italy',JM:'Jamaica',JP:'Japan',JO:'Jordan',KZ:'Kazakhstan',KE:'Kenya',
+    KI:'Kiribati',KW:'Kuwait',KG:'Kyrgyzstan',LA:'Laos',LV:'Latvia',LB:'Lebanon',LS:'Lesotho',
+    LR:'Liberia',LY:'Libya',LI:'Liechtenstein',LT:'Lithuania',LU:'Luxembourg',MG:'Madagascar',
+    MW:'Malawi',MY:'Malaysia',MV:'Maldives',ML:'Mali',MT:'Malta',MH:'Marshall Islands',
+    MR:'Mauritania',MU:'Mauritius',MX:'Mexico',FM:'Micronesia',MD:'Moldova',MC:'Monaco',
+    MN:'Mongolia',ME:'Montenegro',MA:'Morocco',MZ:'Mozambique',MM:'Myanmar',NA:'Namibia',
+    NR:'Nauru',NP:'Nepal',NL:'Netherlands',NZ:'New Zealand',NI:'Nicaragua',NE:'Niger',
+    NG:'Nigeria',NO:'Norway',OM:'Oman',PK:'Pakistan',PW:'Palau',PA:'Panama',PG:'Papua New Guinea',
+    PY:'Paraguay',PE:'Peru',PH:'Philippines',PL:'Poland',PT:'Portugal',QA:'Qatar',RO:'Romania',
+    RU:'Russia',RW:'Rwanda',KN:'Saint Kitts and Nevis',LC:'Saint Lucia',VC:'Saint Vincent',
+    WS:'Samoa',SM:'San Marino',ST:'Sao Tome and Principe',SA:'Saudi Arabia',SN:'Senegal',
+    RS:'Serbia',SC:'Seychelles',SL:'Sierra Leone',SG:'Singapore',SK:'Slovakia',SI:'Slovenia',
+    SB:'Solomon Islands',SO:'Somalia',ZA:'South Africa',SS:'South Sudan',ES:'Spain',
+    LK:'Sri Lanka',SD:'Sudan',SR:'Suriname',SE:'Sweden',CH:'Switzerland',SY:'Syria',
+    TW:'Taiwan',TJ:'Tajikistan',TZ:'Tanzania',TH:'Thailand',TL:'Timor-Leste',TG:'Togo',
+    TO:'Tonga',TT:'Trinidad and Tobago',TN:'Tunisia',TR:'Turkey',TM:'Turkmenistan',TV:'Tuvalu',
+    UG:'Uganda',UA:'Ukraine',AE:'United Arab Emirates',GB:'United Kingdom',US:'United States',
+    UY:'Uruguay',UZ:'Uzbekistan',VU:'Vanuatu',VE:'Venezuela',VN:'Vietnam',YE:'Yemen',
+    ZM:'Zambia',ZW:'Zimbabwe',HK:'Hong Kong',MO:'Macao',PS:'Palestine',XK:'Kosovo',
+};
+
+// Resolve display name: if stored value looks like a 2-letter code, expand it
+function resolveCountryName(country) {
+    if (!country || country === 'Unknown') return 'Unknown';
+    if (/^[A-Z]{2}$/.test(country)) return ISO_TO_NAME[country] || country;
+    return country;
+}
+
+// Flag image component using flagcdn.com — works on all platforms including Windows
+function CountryFlag({ code }) {
+    const [err, setErr] = React.useState(false);
+    if (!code || code.length !== 2 || err) {
+        return (
+            <span className="w-5 h-4 flex items-center justify-center text-[10px] font-bold text-[var(--text-muted)] bg-[var(--border)] rounded-sm flex-shrink-0">
+                {code || '?'}
+            </span>
+        );
+    }
+    return (
+        <img
+            src={`https://flagcdn.com/w40/${code.toLowerCase()}.png`}
+            width={20}
+            height={14}
+            alt={code}
+            className="rounded-sm flex-shrink-0 object-cover"
+            style={{ display: 'inline-block' }}
+            onError={() => setErr(true)}
+        />
+    );
+}
 
 
 function StatCard({ label, value, sub, icon: Icon }) {
@@ -489,58 +565,126 @@ export default function LinkDetailPage() {
             </div>
 
             {/* ── UTM Analytics ── */}
-            <div className="grid md:grid-cols-3 gap-4">
-                {/* UTM Sources */}
-                <div className="card flex flex-col gap-4">
-                    <h3 className="text-xs font-bold text-white uppercase tracking-widest">UTM Sources</h3>
-                    {analytics?.topUtmSources?.length > 0 ? (
-                        <div className="space-y-4">
-                            {analytics.topUtmSources.map(({ name, count }) => (
-                                <ProgressRow key={name} label={name} value={count} total={analytics.totalClicks} abbr={name.slice(0, 2).toUpperCase()} />
-                            ))}
+            {(analytics?.topUtmSources?.length > 0 || analytics?.topUtmMediums?.length > 0 || analytics?.topUtmCampaigns?.length > 0) ? (
+                <div className="grid md:grid-cols-3 gap-4">
+                    {/* UTM Sources */}
+                    <div className="card flex flex-col gap-4">
+                        <div className="flex items-center gap-2">
+                            <AtSign size={13} className="text-violet-400" />
+                            <h3 className="text-xs font-bold text-white uppercase tracking-widest">UTM Sources</h3>
                         </div>
-                    ) : (
-                        <div className="flex-1 flex flex-col items-center justify-center py-6 text-center opacity-40">
-                            <AtSign size={20} className="mb-2" />
-                            <p className="text-[10px]">No UTM Sources</p>
-                        </div>
-                    )}
-                </div>
+                        {analytics.topUtmSources?.length > 0 ? (
+                            <div className="space-y-3">
+                                {analytics.topUtmSources.map(({ name, count }) => (
+                                    <ProgressRow key={name} label={name} value={count} total={analytics.totalClicks}
+                                        abbr={name.slice(0, 2).toUpperCase()} />
+                                ))}
+                            </div>
+                        ) : (
+                            <p className="text-[11px] text-[var(--text-muted)] py-4 text-center">No data</p>
+                        )}
+                    </div>
 
-                {/* UTM Mediums */}
-                <div className="card flex flex-col gap-4">
-                    <h3 className="text-xs font-bold text-white uppercase tracking-widest">UTM Mediums</h3>
-                    {analytics?.topUtmMediums?.length > 0 ? (
-                        <div className="space-y-4">
-                            {analytics.topUtmMediums.map(({ name, count }) => (
-                                <ProgressRow key={name} label={name} value={count} total={analytics.totalClicks} abbr={name.slice(0, 2).toUpperCase()} />
-                            ))}
+                    {/* UTM Mediums */}
+                    <div className="card flex flex-col gap-4">
+                        <div className="flex items-center gap-2">
+                            <Send size={13} className="text-violet-400" />
+                            <h3 className="text-xs font-bold text-white uppercase tracking-widest">UTM Mediums</h3>
                         </div>
-                    ) : (
-                        <div className="flex-1 flex flex-col items-center justify-center py-6 text-center opacity-40">
-                            <Send size={20} className="mb-2" />
-                            <p className="text-[10px]">No UTM Mediums</p>
-                        </div>
-                    )}
-                </div>
+                        {analytics.topUtmMediums?.length > 0 ? (
+                            <div className="space-y-3">
+                                {analytics.topUtmMediums.map(({ name, count }) => (
+                                    <ProgressRow key={name}
+                                        label={UTM_MEDIUM_LABELS[name.toLowerCase()] || name}
+                                        value={count} total={analytics.totalClicks}
+                                        abbr={(UTM_MEDIUM_LABELS[name.toLowerCase()] || name).slice(0, 2).toUpperCase()} />
+                                ))}
+                            </div>
+                        ) : (
+                            <p className="text-[11px] text-[var(--text-muted)] py-4 text-center">No data</p>
+                        )}
+                    </div>
 
-                {/* UTM Campaigns */}
+                    {/* UTM Campaigns */}
+                    <div className="card flex flex-col gap-4">
+                        <div className="flex items-center gap-2">
+                            <TrendingUp size={13} className="text-violet-400" />
+                            <h3 className="text-xs font-bold text-white uppercase tracking-widest">UTM Campaigns</h3>
+                        </div>
+                        {analytics.topUtmCampaigns?.length > 0 ? (
+                            <div className="space-y-3">
+                                {analytics.topUtmCampaigns.map(({ name, count }) => (
+                                    <ProgressRow key={name} label={name} value={count} total={analytics.totalClicks}
+                                        abbr={name.slice(0, 2).toUpperCase()} />
+                                ))}
+                            </div>
+                        ) : (
+                            <p className="text-[11px] text-[var(--text-muted)] py-4 text-center">No data</p>
+                        )}
+                    </div>
+                </div>
+            ) : null}
+
+            {/* ── Country Analytics ── */}
+            {isPro ? (
                 <div className="card flex flex-col gap-4">
-                    <h3 className="text-xs font-bold text-white uppercase tracking-widest">UTM Campaigns</h3>
-                    {analytics?.topUtmCampaigns?.length > 0 ? (
+                    <div>
+                        <h3 className="text-sm font-bold text-white">Countries</h3>
+                        <p className="text-[11px] text-[var(--text-muted)] mt-0.5">Where your clicks are coming from</p>
+                    </div>
+                    {analytics?.topCountries?.length > 0 ? (
                         <div className="space-y-4">
-                            {analytics.topUtmCampaigns.map(({ name, count }) => (
-                                <ProgressRow key={name} label={name} value={count} total={analytics.totalClicks} abbr={name.slice(0, 2).toUpperCase()} />
-                            ))}
+                            {analytics.topCountries.map(({ country, count, countryCode }) => {
+                                // If country is stored as a 2-letter code, derive code from it; else use countryCode
+                                const resolvedCode = /^[A-Z]{2}$/.test(country) ? country : (countryCode || '');
+                                const resolvedName = resolveCountryName(country);
+                                return (
+                                <div key={country}>
+                                    <div className="flex items-center justify-between mb-1.5">
+                                        <div className="flex items-center gap-2">
+                                            <CountryFlag code={resolvedCode} size={18} />
+                                            <span className="text-xs text-[var(--text-secondary)] font-medium">{resolvedName}</span>
+                                        </div>
+                                        <div className="flex items-center gap-2.5">
+                                            <span className="text-xs font-bold text-white tabular-nums">{formatNumber(count)}</span>
+                                            <span className="text-[10px] text-[var(--text-muted)] tabular-nums w-8 text-right">
+                                                {analytics.totalClicks ? Math.round((count / analytics.totalClicks) * 100) : 0}%
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div className="h-1.5 bg-[var(--border)] rounded-full overflow-hidden">
+                                        <div
+                                            className="h-full bg-white rounded-full transition-all duration-700 ease-out"
+                                            style={{ width: `${analytics.totalClicks ? Math.round((count / analytics.totalClicks) * 100) : 0}%` }}
+                                        />
+                                    </div>
+                                </div>
+                                );
+                            })}
                         </div>
                     ) : (
-                        <div className="flex-1 flex flex-col items-center justify-center py-6 text-center opacity-40">
-                            <TrendingUp size={20} className="mb-2" />
-                            <p className="text-[10px]">No UTM Campaigns</p>
+                        <div className="flex-1 flex flex-col items-center justify-center py-8 text-center">
+                            <Globe size={24} className="text-[var(--text-muted)] opacity-40 mb-2" />
+                            <p className="text-xs text-[var(--text-muted)]">No country data yet</p>
                         </div>
                     )}
                 </div>
-            </div>
+            ) : (
+                <div className="card border-dashed flex items-center justify-between gap-4 p-5">
+                    <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-lg bg-violet-500/10 border border-violet-500/20 flex items-center justify-center flex-shrink-0">
+                            <Globe size={16} className="text-violet-400" />
+                        </div>
+                        <div>
+                            <p className="text-sm font-bold text-white">Country Analytics</p>
+                            <p className="text-xs text-[var(--text-muted)] mt-0.5">See which countries your clicks come from.</p>
+                        </div>
+                    </div>
+                    <Link href="/dashboard/billing" className="btn-primary h-8 px-4 text-xs flex-shrink-0">
+                        Upgrade
+                    </Link>
+                </div>
+            )}
 
             {/* ── Pro Analytics ── */}
             {isPro ? (
@@ -550,17 +694,19 @@ export default function LinkDetailPage() {
                         <div className="card flex flex-col gap-4">
                             <h3 className="text-sm font-bold text-white">Browsers</h3>
                             <div className="space-y-4">
-                                {analytics?.browserBreakdown?.map(({ name, value }) => (
-                                    <ProgressRow key={name} label={name} value={value} total={analytics.totalClicks} />
-                                ))}
+                                {analytics?.browserBreakdown?.length > 0 ? analytics.browserBreakdown.map(({ name, value }) => (
+                                    <ProgressRow key={name} label={name} value={value} total={analytics.totalClicks}
+                                        abbr={BROWSER_ABBR[name] || name.slice(0, 2).toUpperCase()} />
+                                )) : <p className="text-[11px] text-[var(--text-muted)]">No data</p>}
                             </div>
                         </div>
                         <div className="card flex flex-col gap-4">
                             <h3 className="text-sm font-bold text-white">Operating Systems</h3>
                             <div className="space-y-4">
-                                {analytics?.osBreakdown?.map(({ name, value }) => (
-                                    <ProgressRow key={name} label={name} value={value} total={analytics.totalClicks} />
-                                ))}
+                                {analytics?.osBreakdown?.length > 0 ? analytics.osBreakdown.map(({ name, value }) => (
+                                    <ProgressRow key={name} label={name} value={value} total={analytics.totalClicks}
+                                        abbr={OS_ABBR[name] || name.slice(0, 3).toUpperCase()} />
+                                )) : <p className="text-[11px] text-[var(--text-muted)]">No data</p>}
                             </div>
                         </div>
                     </div>

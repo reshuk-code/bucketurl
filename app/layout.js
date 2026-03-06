@@ -8,6 +8,7 @@ const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
 const APP_URL = 'https://bucketurl.onrender.com';
 
 export const metadata = {
+  // metadataBase resolves all relative og: image paths to absolute URLs
   metadataBase: new URL(APP_URL),
   title: {
     default: 'BucketURL — Free URL Shortener with Click Analytics & Custom Links',

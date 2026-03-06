@@ -152,7 +152,16 @@ export async function GET(request, { params }) {
             dailyData.push({ date: key, clicks: byDay[key] || 0 });
         }
 
-        const topCountries = Object.entries(byCountry).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([country, count]) => ({ country, count }));
+        // Build country list with country codes for flag display
+        const countryCodeMap = {};
+        for (const click of clicks) {
+            const c = click.country || 'Unknown';
+            if (click.countryCode && !countryCodeMap[c]) countryCodeMap[c] = click.countryCode;
+        }
+        const topCountries = Object.entries(byCountry)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 10)
+            .map(([country, count]) => ({ country, count, countryCode: countryCodeMap[country] || '' }));
         const deviceBreakdown = Object.entries(byDevice).map(([name, value]) => ({ name, value }));
         const osBreakdown = Object.entries(byOS).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([name, value]) => ({ name, value }));
         const browserBreakdown = Object.entries(byBrowser).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([name, value]) => ({ name, value }));

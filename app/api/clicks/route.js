@@ -35,13 +35,36 @@ export async function POST(request) {
         else if (/ios|iphone|ipad/i.test(ua)) os = 'iOS';
         else if (/linux/i.test(ua)) os = 'Linux';
 
+        // Geolocate IP using ip-api.com (free, no key required, 45 req/min)
+        let country = 'Unknown';
+        let city = 'Unknown';
+        let countryCode = '';
+        try {
+            if (ip && ip !== 'unknown' && ip !== '127.0.0.1' && !ip.startsWith('192.168') && !ip.startsWith('10.')) {
+                const geoRes = await fetch(`http://ip-api.com/json/${ip}?fields=status,country,countryCode,city`, {
+                    signal: AbortSignal.timeout(2000),
+                });
+                if (geoRes.ok) {
+                    const geo = await geoRes.json();
+                    if (geo.status === 'success') {
+                        country = geo.country || 'Unknown';
+                        city = geo.city || 'Unknown';
+                        countryCode = geo.countryCode || '';
+                    }
+                }
+            }
+        } catch {
+            // geo lookup failed silently — don't block click tracking
+        }
+
         const clickData = {
             linkId,
             shortCode,
             timestamp: new Date().toISOString(),
             ip,
-            country: 'Unknown', // Would use MaxMind or IP-API in production
-            city: 'Unknown',
+            country,
+            countryCode,
+            city,
             device,
             browser,
             os,

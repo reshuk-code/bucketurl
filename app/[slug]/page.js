@@ -46,6 +46,9 @@ function getAppUrl() {
 // generateMetadata is still needed for crawlers that respect Next.js meta
 export async function generateMetadata({ params }) {
     const { slug } = await params;
+    const appUrl = getAppUrl();
+    const defaultOgImage = `${appUrl}/og-default.png`;
+
     const snapshot = await adminDb
         .collection('links')
         .where('shortCode', '==', slug)
@@ -54,44 +57,48 @@ export async function generateMetadata({ params }) {
         .get();
 
     if (snapshot.empty) {
-        return { title: 'Link Not Found — BucketURL' };
+        return {
+            title: 'Link Not Found — BucketURL',
+            metadataBase: new URL(appUrl),
+        };
     }
 
     const link = snapshot.docs[0].data();
-    const appUrl = getAppUrl();
-    const defaultOgImage = `${appUrl}/og-default.png`;
-    const resolvedOgImage = link.ogImage?.trim() ? link.ogImage : defaultOgImage;
+
+    // Always resolve to an absolute URL — relative paths cause "open in app" dialogs on mobile
+    const resolvedOgImage = link.ogImage?.trim()
+        ? (link.ogImage.startsWith('http') ? link.ogImage : `${appUrl}${link.ogImage}`)
+        : defaultOgImage;
+
+    const ogTitle = link.ogTitle || link.title || 'BucketURL Short Link';
+    const ogDesc = link.ogDescription || 'Shared via BucketURL — Free URL Shortener';
+    const pageUrl = `${appUrl}/${slug}`;
 
     return {
-        title: link.ogTitle || link.title || 'BucketURL Short Link',
-        description: link.ogDescription || 'Shared via BucketURL — Professional URL Shortener',
+        // metadataBase is REQUIRED — without it Next.js uses app:// scheme on mobile
+        metadataBase: new URL(appUrl),
+        title: ogTitle,
+        description: ogDesc,
         openGraph: {
-            title: link.ogTitle || link.title || 'BucketURL Short Link',
-            description: link.ogDescription || 'Shared via BucketURL',
-            images: [
-                {
-                    url: resolvedOgImage,
-                    width: 1200,
-                    height: 630,
-                },
-            ],
+            title: ogTitle,
+            description: ogDesc,
+            images: [{
+                url: resolvedOgImage,
+                width: 1200,
+                height: 630,
+                type: 'image/png',
+                alt: ogTitle,
+            }],
             type: 'website',
-            url: `${appUrl}/${slug}`,
+            url: pageUrl,
             siteName: 'BucketURL',
         },
         twitter: {
             card: 'summary_large_image',
-            title: link.ogTitle || link.title || 'BucketURL Short Link',
-            description: link.ogDescription || 'Shared via BucketURL',
-            images: [resolvedOgImage],
+            title: ogTitle,
+            description: ogDesc,
+            images: [{ url: resolvedOgImage, alt: ogTitle }],
             site: '@bucketurl',
-        },
-        other: {
-            // Force overrides for platforms that sometimes ignore og: tags
-            'og:image': resolvedOgImage,
-            'og:image:width': '1200',
-            'og:image:height': '630',
-            'og:image:type': 'image/png',
         },
     };
 }
@@ -134,6 +141,7 @@ async function unlockPasswordLink(formData) {
         const referer = headersList.get('referer') || 'Direct';
         const parser = new UAParser(userAgent);
 
+        const pwCountryCode = headersList.get('x-vercel-ip-country') || headersList.get('cf-ipcountry') || '';
         await Promise.all([
             adminDb.collection('clicks').add({
                 linkId,
@@ -141,18 +149,15 @@ async function unlockPasswordLink(formData) {
                 shortCode: slug,
                 timestamp: new Date().toISOString(),
                 ip,
-                country:
-                    headersList.get('x-vercel-ip-country') ||
-                    headersList.get('cf-ipcountry') ||
-                    'Unknown',
+                country: pwCountryCode || 'Unknown',
+                countryCode: pwCountryCode,
                 device: parser.getDevice().type || 'Desktop',
                 browser: parser.getBrowser().name || 'Other',
                 os: parser.getOS().name || 'Other',
                 referrer: referer,
-                // Capture dynamic UTMs if present in the redirect URL
-                utmSource: formData.get('utm_source') || null,
-                utmMedium: formData.get('utm_medium') || null,
-                utmCampaign: formData.get('utm_campaign') || null,
+                utmSource: formData.get('utm_source') || link.utmSource || null,
+                utmMedium: formData.get('utm_medium') || link.utmMedium || null,
+                utmCampaign: formData.get('utm_campaign') || link.utmCampaign || null,
                 utmTerm: formData.get('utm_term') || null,
                 utmContent: formData.get('utm_content') || null,
             }),
@@ -293,10 +298,22 @@ export default async function SlugPage({ params, searchParams }) {
             const device = parser.getDevice().type || 'Desktop';
             const browser = parser.getBrowser().name || 'Other';
             const os = parser.getOS().name || 'Other';
-            const country =
-                headersList.get('x-vercel-ip-country') ||
-                headersList.get('cf-ipcountry') ||
-                'Unknown';
+            // Country: prefer Vercel/CF header (code like "US"), then ip-api fallback
+            let countryCode = headersList.get('x-vercel-ip-country') || headersList.get('cf-ipcountry') || '';
+            let country = 'Unknown';
+            if (countryCode && countryCode.length === 2) {
+                // We have a code from edge headers — resolve to full name via ip-api for consistency
+                // but store both so UI can use countryCode for flags
+                country = countryCode; // will be resolved to name in UI via ISO_TO_NAME
+            } else {
+                // Fallback: geolocate by IP
+                try {
+                    if (ip && ip !== 'unknown' && !ip.startsWith('127.') && !ip.startsWith('192.168') && !ip.startsWith('10.')) {
+                        const geo = await fetch(`http://ip-api.com/json/${ip}?fields=status,country,countryCode`, { signal: AbortSignal.timeout(2000) });
+                        if (geo.ok) { const g = await geo.json(); if (g.status === 'success') { country = g.country || 'Unknown'; countryCode = g.countryCode || ''; } }
+                    }
+                } catch { /* silent */ }
+            }
 
             await Promise.all([
                 adminDb.collection('clicks').add({
@@ -306,13 +323,14 @@ export default async function SlugPage({ params, searchParams }) {
                     timestamp: new Date().toISOString(),
                     ip,
                     country,
+                    countryCode,
                     device,
                     browser,
                     os: os,
                     referrer: referer,
-                    utmSource: sp?.utm_source || null,
-                    utmMedium: sp?.utm_medium || null,
-                    utmCampaign: sp?.utm_campaign || null,
+                    utmSource: sp?.utm_source || link.utmSource || null,
+                    utmMedium: sp?.utm_medium || link.utmMedium || null,
+                    utmCampaign: sp?.utm_campaign || link.utmCampaign || null,
                     utmTerm: sp?.utm_term || null,
                     utmContent: sp?.utm_content || null,
                 }),
