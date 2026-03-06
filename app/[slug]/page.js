@@ -65,9 +65,10 @@ export async function generateMetadata({ params }) {
 
     const link = snapshot.docs[0].data();
 
-    // Always resolve to an absolute URL — relative paths cause "open in app" dialogs on mobile
-    const resolvedOgImage = link.ogImage?.trim()
-        ? (link.ogImage.startsWith('http') ? link.ogImage : `${appUrl}${link.ogImage}`)
+    // Only use a custom ogImage if the user explicitly set one (starts with https://).
+    // Never fall through to the destination's own OG image — always use our default instead.
+    const resolvedOgImage = (link.ogImage?.trim() && link.ogImage.startsWith('https://'))
+        ? link.ogImage
         : OG_DEFAULT_IMAGE;
 
     // Build a meaningful title — never let a raw short slug be the title
@@ -219,7 +220,7 @@ export default async function SlugPage({ params, searchParams }) {
     const link = doc.data();
     const linkId = doc.id;
     const appUrl = getAppUrl();
-    const ogImage = link.ogImage?.trim() ? link.ogImage : OG_DEFAULT_IMAGE;
+    const ogImage = (link.ogImage?.trim() && link.ogImage.startsWith('https://')) ? link.ogImage : OG_DEFAULT_IMAGE;
 
     // Check expiry
     if (link.expiresAt && new Date(link.expiresAt) < new Date()) {
@@ -298,10 +299,12 @@ export default async function SlugPage({ params, searchParams }) {
         );
     }
 
-    // ── Real users: track click then server-redirect immediately ───────────
-    // We do NOT use JS redirect — JS runs after HTML is parsed, which means
-    // social preview scrapers (WhatsApp, iMessage, Telegram) that aren't in
-    // the bot list would execute it and get redirected before reading OG tags.
+    // ── Real users: track click then redirect ──────────────────────────────
+    // IMPORTANT: We never do a bare 302 redirect for ANYONE.
+    // Social crawlers (WhatsApp, iMessage, Telegram, FB) follow 302 redirects
+    // and end up reading OG tags from the DESTINATION — not ours.
+    // Instead: bots get a static OG page, real users get an instant meta-refresh
+    // (which crawlers don't follow) so our OG tags are always read first.
     if (!botVisit) {
         const ip = headersList.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
         const referer = headersList.get('referer') || 'Direct';
@@ -351,17 +354,27 @@ export default async function SlugPage({ params, searchParams }) {
             ]).catch(() => {});
         } catch { /* never block the redirect */ }
 
-        // Server-side 302 redirect — instant, no JS, works in every client
-        redirect(link.originalUrl);
+        // Return a page with meta-refresh instead of 302.
+        // Browsers follow meta-refresh instantly (0s delay).
+        // Social crawlers (FB, WhatsApp, Twitter, Telegram) do NOT follow meta-refresh,
+        // so they stay on this page and read our OG tags from <head>.
+        const dest = link.originalUrl.replace(/"/g, '&quot;');
+        return (
+            <html>
+                <head>
+                    <meta httpEquiv="refresh" content={`0;url=${dest}`} />
+                    <meta name="robots" content="noindex" />
+                </head>
+                <body />
+            </html>
+        );
     }
 
     // ── Bots only reach here — serve the OG preview page ─────────────────
     // generateMetadata above injects the og: tags into <head> automatically.
     // This page body is what social crawlers (FB, Twitter, Slack, WhatsApp)
     // render as a visual preview card.
-    const resolvedOgImage = link.ogImage?.trim()
-        ? (link.ogImage.startsWith('http') ? link.ogImage : `${appUrl}${link.ogImage}`)
-        : OG_DEFAULT_IMAGE;
+    const resolvedOgImage = (link.ogImage?.trim() && link.ogImage.startsWith('https://')) ? link.ogImage : OG_DEFAULT_IMAGE;
 
     const displayTitle = link.ogTitle || link.title || 'BucketURL Short Link';
     const displayDesc = link.ogDescription || 'Shared via BucketURL';
