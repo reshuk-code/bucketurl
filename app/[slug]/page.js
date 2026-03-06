@@ -3,6 +3,7 @@ import { adminDb, adminFirestore } from '@/lib/firebase-admin';
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { UAParser } from 'ua-parser-js';
+const OG_DEFAULT_IMAGE = 'https://bucketurl.onrender.com/og-default.png';
 
 // Social media bot user-agent patterns
 const BOT_PATTERNS = [
@@ -47,7 +48,6 @@ function getAppUrl() {
 export async function generateMetadata({ params }) {
     const { slug } = await params;
     const appUrl = getAppUrl();
-    const defaultOgImage = `${appUrl}/og-default.png`;
 
     const snapshot = await adminDb
         .collection('links')
@@ -68,10 +68,21 @@ export async function generateMetadata({ params }) {
     // Always resolve to an absolute URL — relative paths cause "open in app" dialogs on mobile
     const resolvedOgImage = link.ogImage?.trim()
         ? (link.ogImage.startsWith('http') ? link.ogImage : `${appUrl}${link.ogImage}`)
-        : defaultOgImage;
+        : OG_DEFAULT_IMAGE;
 
-    const ogTitle = link.ogTitle || link.title || 'BucketURL Short Link';
-    const ogDesc = link.ogDescription || 'Shared via BucketURL — Free URL Shortener';
+    // Build a meaningful title — never let a raw short slug be the title
+    const rawTitle = link.ogTitle || link.title || '';
+    const ogTitle = rawTitle.length >= 10
+        ? rawTitle
+        : `${rawTitle ? rawTitle + ' — ' : ''}Shared via BucketURL`;
+
+    // Build a meaningful description — must be 110-160 chars for SEO
+    const rawDesc = link.ogDescription || '';
+    const destHost = (() => { try { return new URL(link.originalUrl).hostname.replace('www.', ''); } catch { return ''; } })();
+    const ogDesc = rawDesc.length >= 50
+        ? rawDesc
+        : `This short link redirects to ${destHost || 'the destination'}. Created and tracked with BucketURL — the free URL shortener with real-time click analytics, custom slugs, and UTM tracking.`;
+
     const pageUrl = `${appUrl}/${slug}`;
 
     return {
@@ -208,8 +219,7 @@ export default async function SlugPage({ params, searchParams }) {
     const link = doc.data();
     const linkId = doc.id;
     const appUrl = getAppUrl();
-    const defaultOgImage = `${appUrl}/og-default.png`;
-    const ogImage = link.ogImage?.trim() ? link.ogImage : defaultOgImage;
+    const ogImage = link.ogImage?.trim() ? link.ogImage : OG_DEFAULT_IMAGE;
 
     // Check expiry
     if (link.expiresAt && new Date(link.expiresAt) < new Date()) {
@@ -288,7 +298,10 @@ export default async function SlugPage({ params, searchParams }) {
         );
     }
 
-    // ── Track click (non-password, non-bot) ─────────────────────────────
+    // ── Real users: track click then server-redirect immediately ───────────
+    // We do NOT use JS redirect — JS runs after HTML is parsed, which means
+    // social preview scrapers (WhatsApp, iMessage, Telegram) that aren't in
+    // the bot list would execute it and get redirected before reading OG tags.
     if (!botVisit) {
         const ip = headersList.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
         const referer = headersList.get('referer') || 'Direct';
@@ -298,15 +311,12 @@ export default async function SlugPage({ params, searchParams }) {
             const device = parser.getDevice().type || 'Desktop';
             const browser = parser.getBrowser().name || 'Other';
             const os = parser.getOS().name || 'Other';
-            // Country: prefer Vercel/CF header (code like "US"), then ip-api fallback
+
             let countryCode = headersList.get('x-vercel-ip-country') || headersList.get('cf-ipcountry') || '';
             let country = 'Unknown';
             if (countryCode && countryCode.length === 2) {
-                // We have a code from edge headers — resolve to full name via ip-api for consistency
-                // but store both so UI can use countryCode for flags
-                country = countryCode; // will be resolved to name in UI via ISO_TO_NAME
+                country = countryCode;
             } else {
-                // Fallback: geolocate by IP
                 try {
                     if (ip && ip !== 'unknown' && !ip.startsWith('127.') && !ip.startsWith('192.168') && !ip.startsWith('10.')) {
                         const geo = await fetch(`http://ip-api.com/json/${ip}?fields=status,country,countryCode`, { signal: AbortSignal.timeout(2000) });
@@ -315,7 +325,8 @@ export default async function SlugPage({ params, searchParams }) {
                 } catch { /* silent */ }
             }
 
-            await Promise.all([
+            // Fire-and-forget — don't await, so redirect is instant
+            Promise.all([
                 adminDb.collection('clicks').add({
                     linkId,
                     userId: link.userId,
@@ -326,7 +337,7 @@ export default async function SlugPage({ params, searchParams }) {
                     countryCode,
                     device,
                     browser,
-                    os: os,
+                    os,
                     referrer: referer,
                     utmSource: sp?.utm_source || link.utmSource || null,
                     utmMedium: sp?.utm_medium || link.utmMedium || null,
@@ -337,75 +348,59 @@ export default async function SlugPage({ params, searchParams }) {
                 adminDb.collection('links').doc(linkId).update({
                     totalClicks: adminFirestore.FieldValue.increment(1),
                 }),
-            ]);
-        } catch (e) {
-            // Don't fail redirect on click tracking error
-        }
+            ]).catch(() => {});
+        } catch { /* never block the redirect */ }
+
+        // Server-side 302 redirect — instant, no JS, works in every client
+        redirect(link.originalUrl);
     }
 
-    // ── Bot: serve rich preview page, NO redirect ────────────────────────
-    // Social crawlers (FB, Twitter, LinkedIn, Slack) will stop here and
-    // read our OG tags. Real users are redirected instantly via JS below.
-    const ogTitle = link.ogTitle || link.title || 'BucketURL Short Link';
-    const ogDescription = link.ogDescription || 'Shared via BucketURL — Professional URL Shortener';
+    // ── Bots only reach here — serve the OG preview page ─────────────────
+    // generateMetadata above injects the og: tags into <head> automatically.
+    // This page body is what social crawlers (FB, Twitter, Slack, WhatsApp)
+    // render as a visual preview card.
+    const resolvedOgImage = link.ogImage?.trim()
+        ? (link.ogImage.startsWith('http') ? link.ogImage : `${appUrl}${link.ogImage}`)
+        : OG_DEFAULT_IMAGE;
+
+    const displayTitle = link.ogTitle || link.title || 'BucketURL Short Link';
+    const displayDesc = link.ogDescription || 'Shared via BucketURL';
 
     return (
-        <>
-            {/* Inline OG meta tags as additional insurance — Next.js generateMetadata
-                handles these at the framework level, but some platforms parse the raw HTML
-                and these provide a secondary layer in case */}
-
-            {/* Instant JS redirect for real users */}
-            {!botVisit && (
-                <script
-                    dangerouslySetInnerHTML={{
-                        __html: `(function(){var d=document.referrer,r="${link.originalUrl.replace(/"/g, '\\"')}";window.location.replace(r);})();`,
-                    }}
+        <div className="min-h-screen bg-[#0a0a0a] flex flex-col items-center justify-center px-6" style={{ fontFamily: '-apple-system, sans-serif' }}>
+            <div className="w-full max-w-lg mb-8 rounded-xl overflow-hidden border border-[#262626] shadow-2xl">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                    src={resolvedOgImage}
+                    alt={displayTitle}
+                    className="w-full object-cover"
+                    style={{ aspectRatio: '1200/630' }}
                 />
-            )}
-
-            {/* Bot-facing preview page — also acts as fallback if JS is disabled */}
-            <div className="min-h-screen bg-[#0a0a0a] flex flex-col items-center justify-center px-6" style={{ fontFamily: '-apple-system, sans-serif' }}>
-                {/* OG card preview */}
-                {ogImage && (
-                    <div className="w-full max-w-lg mb-8 rounded-xl overflow-hidden border border-[#262626] shadow-2xl">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                            src={ogImage}
-                            alt={ogTitle}
-                            className="w-full object-cover"
-                            style={{ aspectRatio: '1200/630' }}
-                        />
-                        <div className="bg-[#111111] px-5 py-4 border-t border-[#262626]">
-                            <p className="text-[10px] font-bold text-[#525252] uppercase tracking-widest mb-1">
-                                {new URL(link.originalUrl).hostname}
-                            </p>
-                            <p className="text-sm font-bold text-white truncate">{ogTitle}</p>
-                            {ogDescription && (
-                                <p className="text-xs text-[#a3a3a3] mt-1 line-clamp-2">{ogDescription}</p>
-                            )}
-                        </div>
-                    </div>
-                )}
-
-                <div className="text-center">
-                    <p className="text-sm text-[#525252] mb-4">
-                        {botVisit ? 'Preview via BucketURL' : 'Redirecting you to the destination…'}
+                <div className="bg-[#111111] px-5 py-4 border-t border-[#262626]">
+                    <p className="text-[10px] font-bold text-[#525252] uppercase tracking-widest mb-1">
+                        {(() => { try { return new URL(link.originalUrl).hostname; } catch { return appUrl; } })()}
                     </p>
-                    <a
-                        href={link.originalUrl}
-                        className="inline-flex items-center gap-2 bg-white text-black text-sm font-bold px-6 py-3 rounded-lg hover:bg-[#f0f0f0] transition-colors"
-                    >
-                        Continue to destination →
-                    </a>
-                    <p className="text-[10px] text-[#404040] mt-6">
-                        Shortened by{' '}
-                        <a href={appUrl} className="text-[#737373] hover:text-white transition-colors">
-                            BucketURL
-                        </a>
-                    </p>
+                    <p className="text-sm font-bold text-white truncate">{displayTitle}</p>
+                    {displayDesc && (
+                        <p className="text-xs text-[#a3a3a3] mt-1 line-clamp-2">{displayDesc}</p>
+                    )}
                 </div>
             </div>
-        </>
+            <div className="text-center">
+                <p className="text-sm text-[#525252] mb-4">Preview via BucketURL</p>
+                <a
+                    href={link.originalUrl}
+                    className="inline-flex items-center gap-2 bg-white text-black text-sm font-bold px-6 py-3 rounded-lg hover:bg-[#f0f0f0] transition-colors"
+                >
+                    Continue to destination →
+                </a>
+                <p className="text-[10px] text-[#404040] mt-6">
+                    Shortened by{' '}
+                    <a href={appUrl} className="text-[#737373] hover:text-white transition-colors">
+                        BucketURL
+                    </a>
+                </p>
+            </div>
+        </div>
     );
 }
