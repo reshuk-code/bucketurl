@@ -31,9 +31,29 @@ export function middleware(request) {
     response.headers.set('X-Frame-Options', 'SAMEORIGIN');
     response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
 
-    // For slug pages: allow images from our domain + cloudinary + flagcdn
-    // This prevents browsers from blocking OG image loads
-    if (!pathname.startsWith('/dashboard') && !pathname.startsWith('/api')) {
+    // Auth pages: need Google/Firebase domains whitelisted
+    const isAuthPage = pathname === '/login' || pathname === '/signup' || pathname === '/forgot-password';
+
+    if (isAuthPage) {
+        response.headers.set(
+            'Content-Security-Policy',
+            [
+                `default-src 'self' ${APP_URL}`,
+                // Google Identity Services + Firebase Auth scripts
+                `script-src 'self' 'unsafe-inline' 'unsafe-eval' https://accounts.google.com https://apis.google.com https://*.firebaseapp.com https://*.firebase.com`,
+                `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com`,
+                `font-src 'self' https://fonts.gstatic.com`,
+                `img-src 'self' data: blob: https: ${APP_URL}`,
+                // Firebase auth + Google OAuth API calls
+                `connect-src 'self' https: wss: https://accounts.google.com https://oauth2.googleapis.com https://*.googleapis.com https://*.firebaseio.com https://securetoken.googleapis.com https://identitytoolkit.googleapis.com`,
+                // Google OAuth popup/redirect frame
+                `frame-src 'self' https://accounts.google.com https://*.firebaseapp.com`,
+                `frame-ancestors 'none'`,
+            ].join('; ')
+        );
+    } else if (!pathname.startsWith('/dashboard') && !pathname.startsWith('/api')) {
+        // For slug pages: allow images from our domain + cloudinary + flagcdn
+        // This prevents browsers from blocking OG image loads
         response.headers.set(
             'Content-Security-Policy',
             [
