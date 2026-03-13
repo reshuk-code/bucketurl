@@ -3,8 +3,17 @@ import { NextResponse } from 'next/server';
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://bucketurl.onrender.com';
 
+const RENDER_HOST = 'bucketurl.onrender.com';
+const VERCEL_URL = 'https://bucketurl.vercel.app';
+
 export function middleware(request) {
     const { pathname } = request.nextUrl;
+
+    // ── Redirect Render traffic → Vercel ──────────────────────────────────
+    if (request.headers.get('host') === RENDER_HOST) {
+        const destination = `${VERCEL_URL}${pathname}${request.nextUrl.search}`;
+        return NextResponse.redirect(destination, { status: 301 });
+    }
 
     // Check for Firebase auth session cookie
     const session = request.cookies.get('__session')?.value;

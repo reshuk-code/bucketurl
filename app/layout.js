@@ -5,7 +5,7 @@ import { Toaster } from 'react-hot-toast';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
 
-const APP_URL = 'https://bucketurl.onrender.com';
+const APP_URL = 'https://bucketurl.vercel.app'; // TODO: revert to onrender when stable
 
 export const metadata = {
   // metadataBase resolves all relative og: image paths to absolute URLs
