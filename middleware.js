@@ -3,15 +3,15 @@ import { NextResponse } from 'next/server';
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://bucketurl.onrender.com';
 
-const RENDER_HOST = 'bucketurl.onrender.com';
-const VERCEL_URL = 'https://bucketurl.vercel.app';
+const CANONICAL_URL = 'https://bucketurl.antqr.xyz';
+const OLD_HOSTS = ['bucketurl.onrender.com', 'bucketurl.vercel.app'];
 
 export function middleware(request) {
     const { pathname } = request.nextUrl;
 
-    // ── Redirect Render traffic → Vercel ──────────────────────────────────
-    if (request.headers.get('host') === RENDER_HOST) {
-        const destination = `${VERCEL_URL}${pathname}${request.nextUrl.search}`;
+    // ── Redirect old hosts → custom domain ─────────────────────────────
+    if (OLD_HOSTS.includes(request.headers.get('host'))) {
+        const destination = `${CANONICAL_URL}${pathname}${request.nextUrl.search}`;
         return NextResponse.redirect(destination, { status: 301 });
     }
 

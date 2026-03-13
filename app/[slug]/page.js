@@ -3,7 +3,7 @@ import { adminDb, adminFirestore } from '@/lib/firebase-admin';
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { UAParser } from 'ua-parser-js';
-const OG_DEFAULT_IMAGE = 'https://bucketurl.onrender.com/og-default.png';
+const OG_DEFAULT_IMAGE = 'https://bucketurl.antqr.xyz/og-default.png';
 
 // Social media bot user-agent patterns
 const BOT_PATTERNS = [
@@ -41,7 +41,7 @@ function isBot(userAgent) {
 }
 
 function getAppUrl() {
-    return process.env.NEXT_PUBLIC_APP_URL || 'https://bucketurl.onrender.com';
+    return process.env.NEXT_PUBLIC_APP_URL || 'https://bucketurl.antqr.xyz';
 }
 
 // generateMetadata is still needed for crawlers that respect Next.js meta

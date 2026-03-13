@@ -17,11 +17,11 @@ export const metadata = {
     'link analytics', 'click tracking', 'bitly alternative', 'tinyurl alternative',
     'url shortener free', 'branded short links', 'qr code generator',
   ],
-  alternates: { canonical: 'https://bucketurl.vercel.app' },
+  alternates: { canonical: 'https://bucketurl.antqr.xyz' },
   openGraph: {
     title: 'BucketURL — Free URL Shortener with Analytics',
     description: 'Shorten URLs, track clicks, create custom links. Free forever.',
-    url: 'https://bucketurl.vercel.app',
+    url: 'https://bucketurl.antqr.xyz',
     images: [{ url: '/og-default.png', width: 1200, height: 630 }],
   },
 };
@@ -42,7 +42,7 @@ const FEATURES = [
   {
     icon: Shield,
     title: 'Custom Branded Slugs',
-    desc: 'Memorable, professional short links. bucketurl.vercel.app/launch builds instant trust.',
+    desc: 'Memorable, professional short links. bucketurl.antqr.xyz/launch builds instant trust.',
     wide: false,
   },
   {
@@ -233,7 +233,7 @@ export default function LandingPage() {
               </div>
               <div className="relative z-10 w-full bg-white text-black rounded-lg p-4 shadow-2xl">
                 <p className="text-[10px] text-black/50 uppercase tracking-widest mb-2 font-mono font-bold">Short Link</p>
-                <p className="text-lg font-mono font-bold">bucketurl.vercel.app/spring</p>
+                <p className="text-lg font-mono font-bold">bucketurl.antqr.xyz/spring</p>
               </div>
             </div>
           </div>
